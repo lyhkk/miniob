@@ -25,4 +25,8 @@ GRTAGS
 GPATH
 GTAGS
 docs/book
+observer.log*
+obclient.log*
+src/observer/observer.log*
+src/obclient/obclient.log*
 #*#
