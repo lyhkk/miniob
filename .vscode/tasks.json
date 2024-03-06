@@ -1,6 +1,6 @@
 {
     "options": {
-        "cwd": "${workspaceFolder}/"
+        "cwd": "${workspaceFolder}/build_debug"
     },
     "tasks": [
         {
@@ -8,7 +8,7 @@
             "command": "cmake",
             "args": [
                 "-DDEBUG=ON",
-                "."
+                ".."
             ]
         },
         {
