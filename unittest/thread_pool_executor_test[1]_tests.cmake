@@ -1,0 +1,7 @@
+add_test([=[ThreadPoolExecutor.test1]=]  /home/lyhkk/miniob/bin/thread_pool_executor_test [==[--gtest_filter=ThreadPoolExecutor.test1]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[ThreadPoolExecutor.test1]=]  PROPERTIES WORKING_DIRECTORY /home/lyhkk/miniob/unittest SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+add_test([=[ThreadPoolExecutor.test2]=]  /home/lyhkk/miniob/bin/thread_pool_executor_test [==[--gtest_filter=ThreadPoolExecutor.test2]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[ThreadPoolExecutor.test2]=]  PROPERTIES WORKING_DIRECTORY /home/lyhkk/miniob/unittest SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+add_test([=[ThreadPoolExecutor.test3]=]  /home/lyhkk/miniob/bin/thread_pool_executor_test [==[--gtest_filter=ThreadPoolExecutor.test3]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[ThreadPoolExecutor.test3]=]  PROPERTIES WORKING_DIRECTORY /home/lyhkk/miniob/unittest SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+set(  thread_pool_executor_test_TESTS ThreadPoolExecutor.test1 ThreadPoolExecutor.test2 ThreadPoolExecutor.test3)

@@ -1,0 +1,5 @@
+if(EXISTS "/home/lyhkk/miniob/unittest/integer_generator_test[1]_tests.cmake")
+  include("/home/lyhkk/miniob/unittest/integer_generator_test[1]_tests.cmake")
+else()
+  add_test(integer_generator_test_NOT_BUILT integer_generator_test_NOT_BUILT)
+endif()

@@ -1,0 +1,5 @@
+add_test([=[SimpleQueue.test]=]  /home/lyhkk/miniob/bin/simple_queue_test [==[--gtest_filter=SimpleQueue.test]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[SimpleQueue.test]=]  PROPERTIES WORKING_DIRECTORY /home/lyhkk/miniob/unittest SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+add_test([=[SimpleQueue.test_unique_ptr]=]  /home/lyhkk/miniob/bin/simple_queue_test [==[--gtest_filter=SimpleQueue.test_unique_ptr]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[SimpleQueue.test_unique_ptr]=]  PROPERTIES WORKING_DIRECTORY /home/lyhkk/miniob/unittest SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+set(  simple_queue_test_TESTS SimpleQueue.test SimpleQueue.test_unique_ptr)
