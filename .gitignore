@@ -31,7 +31,7 @@ src/observer/observer.log*
 src/obclient/obclient.log*
 bin
 CMakeFiles
-lab
+lib
 test
 camke_install.cmake
 CMakeCache.txt
