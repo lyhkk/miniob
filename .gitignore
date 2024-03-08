@@ -29,4 +29,12 @@ observer.log*
 obclient.log*
 src/observer/observer.log*
 src/obclient/obclient.log*
+bin
+CMakeFiles
+lab
+test
+camke_install.cmake
+CMakeCache.txt
+Makefile
+CTestTestfile.cmake
 #*#
