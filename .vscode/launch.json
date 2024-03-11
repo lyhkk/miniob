@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build_debug/bin/observer",
-            "args": ["-f", "${workspaceFolder}/etc/observer.ini"],
+            "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],
