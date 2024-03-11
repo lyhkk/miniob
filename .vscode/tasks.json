@@ -1,6 +1,6 @@
 {
     "options": {
-        "cwd": "${workspaceFolder}/build_debug"
+        "cwd": "${workspaceFolder}/build"
     },
     "tasks": [
         {
