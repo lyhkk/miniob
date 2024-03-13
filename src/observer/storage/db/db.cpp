@@ -106,16 +106,17 @@ RC Db::drop_table(const char *table_name)
   auto it = opened_tables_.find(table_name);
     if (it == opened_tables_.end())
     {
-        return RC::SCHEMA_TABLE_NOT_EXIST; // 找不到表，要返回错误，测试程序中也会校验这种场景
+        return RC::SCHEMA_TABLE_NOT_EXIST;
     }
     Table* table = it->second;
-    RC rc = table->destroy(path_.c_str()); // 让表自己销毁资源(TODO: 类Table没有destroy方法)
+    RC rc = table->destroy(path_.c_str());
     if(rc != RC::SUCCESS) return rc;
 
-    opened_tables_.erase(it); // 删除成功的话，从表list中将它删除
+    opened_tables_.erase(it);
     delete table;
     return RC::SUCCESS;
 }
+
 
 Table *Db::find_table(const char *table_name) const
 {

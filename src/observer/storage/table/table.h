@@ -50,10 +50,10 @@ public:
   RC create(int32_t table_id, const char *path, const char *name, const char *base_dir, int attribute_count,
       const AttrInfoSqlNode attributes[]);
 
-/**
- *销毁一个表
- * @param dir
- */
+ /**
+  *销毁一个表
+  * @param dir
+  */
   RC destroy(const char *dir);
 
   /**

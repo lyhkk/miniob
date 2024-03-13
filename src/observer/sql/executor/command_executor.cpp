@@ -41,6 +41,10 @@ RC CommandExecutor::execute(SQLStageEvent *sql_event)
       return executor.execute(sql_event);
     } break;
 
+    case StmtType::DROP_TABLE: {
+      //TODO
+    }
+
     case StmtType::DESC_TABLE: {
       DescTableExecutor executor;
       return executor.execute(sql_event);

@@ -130,19 +130,13 @@ RC Table::destroy(const char* dir) {
     std::string path = table_meta_file(dir, name());
     if(unlink(path.c_str()) != 0) {
         LOG_ERROR("Failed to remove meta file=%s, errno=%d", path.c_str(), errno);
-        return RC::GENERIC_ERROR;
+        return RC::INVALID_ARGUMENT;
     }
 
     std::string data_file = std::string(dir) + "/" + name() + TABLE_DATA_SUFFIX;
     if(unlink(data_file.c_str()) != 0) { // 删除描述表元数据的文件
         LOG_ERROR("Failed to remove data file=%s, errno=%d", data_file.c_str(), errno);
-        return RC::GENERIC_ERROR;
-    }
-
-    std::string text_data_file = std::string(dir) + "/" + name() + TABLE_TEXT_DATA_SUFFIX;
-    if(unlink(text_data_file.c_str()) != 0) { // 删除表实现text字段的数据文件（后续实现了text case时需要考虑，最开始可以不考虑这个逻辑）
-        LOG_ERROR("Failed to remove text data file=%s, errno=%d", text_data_file.c_str(), errno);
-        return RC::GENERIC_ERROR;
+        return RC::INVALID_ARGUMENT;
     }
 
     const int index_num = table_meta_.index_num();
@@ -152,7 +146,7 @@ RC Table::destroy(const char* dir) {
         std::string index_file = index_data_file(dir, name(), index_meta->name());
         if(unlink(index_file.c_str()) != 0) {
             LOG_ERROR("Failed to remove index file=%s, errno=%d", index_file.c_str(), errno);
-            return RC::GENERIC_ERROR;
+            return RC::INVALID_ARGUMENT;
         }
     }
     return RC::SUCCESS;
