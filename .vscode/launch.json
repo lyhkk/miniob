@@ -8,7 +8,7 @@
             "name": "(gdb) 启动",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/bin/observer",
+            "program": "${workspaceFolder}/build_debug/bin/observer",
             "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
