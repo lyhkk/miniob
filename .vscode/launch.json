@@ -5,8 +5,8 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gdb) 启动",
-            "type": "cppdbg",
+            "name": "(lldb) 启动",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build_debug/bin/observer",
             "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],

@@ -12,7 +12,6 @@ See the Mulan PSL v2 for more details. */
 // Created by Longda on 2021/4/13.
 //
 
-#include <sstream>
 #include <string>
 
 #include "sql/executor/execute_stage.h"
@@ -24,7 +23,6 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/calc_physical_operator.h"
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/stmt.h"
-#include "storage/default/default_handler.h"
 
 using namespace std;
 using namespace common;
