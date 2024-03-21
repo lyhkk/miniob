@@ -25,6 +25,7 @@ enum AttrType
   UNDEFINED,
   CHARS,     ///< 字符串类型
   INTS,      ///< 整数类型(4字节)
+  DATES,   ///< 日期类型
   FLOATS,    ///< 浮点数类型(4字节)
   BOOLEANS,  ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };
@@ -56,9 +57,11 @@ public:
   void set_data(const char *data, int length) { this->set_data(const_cast<char *>(data), length); }
   void set_int(int val);
   void set_float(float val);
+  void set_date(int val);
   void set_boolean(bool val);
   void set_string(const char *s, int len = 0);
   void set_value(const Value &value);
+  bool check_date(int y, int m, int d);
 
   std::string to_string() const;
 

@@ -158,6 +158,7 @@ public:
     const FieldMeta *field_meta = field_expr->field().meta();
     cell.set_type(field_meta->type());
     cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+    // std::cout << "cell: " << this->record_->data() << std::endl;
     return RC::SUCCESS;
   }
 

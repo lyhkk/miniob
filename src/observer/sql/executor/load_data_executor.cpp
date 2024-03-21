@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "event/session_event.h"
 #include "event/sql_event.h"
 #include "sql/executor/sql_result.h"
+#include "sql/parser/value.h"
 #include "sql/stmt/load_data_stmt.h"
 
 using namespace common;
@@ -63,7 +64,7 @@ RC insert_record_from_file(
     }
 
     switch (field->type()) {
-      case INTS: {
+      case INTS: case DATES: {
         deserialize_stream.clear();  // 清理stream的状态，防止多次解析出现异常
         deserialize_stream.str(file_value);
 
