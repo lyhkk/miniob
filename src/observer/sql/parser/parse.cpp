@@ -36,29 +36,6 @@ void ParsedSqlResult::add_sql_node(std::unique_ptr<ParsedSqlNode> sql_node)
   sql_nodes_.emplace_back(std::move(sql_node));
 }
 
-RC check_where_clause(ParsedSqlResult *sql_result)
-{
-  int is_right_illegal_date = 0;
-  for (auto &sql_node : sql_result->sql_nodes()) {
-    switch (sql_node->flag) {
-      case SCF_SELECT: {
-        for (auto sql_condition : sql_node.get()->selection.conditions) {
-          is_right_illegal_date = sql_condition.right_value.undefined_value();
-        }
-      }break;
-      case SCF_UPDATE: {
-        for (auto sql_condition : sql_node.get()->selection.conditions) {
-          is_right_illegal_date = sql_condition.right_value.undefined_value();
-        }
-      }
-      break;
-      default:
-        break;
-    }
-  }
-  return is_right_illegal_date == 1 ? RC::SQL_SYNTAX : RC::SUCCESS;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 int sql_parse(const char *st, ParsedSqlResult *sql_result);
@@ -66,5 +43,5 @@ int sql_parse(const char *st, ParsedSqlResult *sql_result);
 RC parse(const char *st, ParsedSqlResult *sql_result)
 {
   sql_parse(st, sql_result);
-  return check_where_clause(sql_result);
+  return RC::SUCCESS;
 }
