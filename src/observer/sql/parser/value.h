@@ -81,6 +81,7 @@ public:
   float       get_float() const;
   std::string get_string() const;
   bool        get_boolean() const;
+  int         undefined_value();
 
 private:
   AttrType attr_type_ = UNDEFINED;

@@ -48,9 +48,12 @@ Value::Value(const char *s, int len /*= 0*/) {
   int y, m, d;
   char *p = (char *)s;
   if( sscanf(p, "%d-%d-%d", &y, &m, &d) ) {
-    if (!check_date(y, m, d))
+    if (!check_date(y, m, d)) {
+      attr_type_ = UNDEFINED;
+      num_value_.int_value_ = -1;
       // construct failed
       return;
+    }
     set_date(10000 * y + 100 * m + d);
   } else {
     set_string(s, len);
@@ -113,6 +116,15 @@ void Value::set_boolean(bool val)
   num_value_.bool_value_ = val;
   length_                = sizeof(val);
 }
+
+int Value::undefined_value()
+{
+  if (attr_type_ == UNDEFINED) {
+    return -(num_value_.int_value_);
+  }
+  return 0;
+}
+
 void Value::set_string(const char *s, int len /*= 0*/)
 {
   attr_type_ = CHARS;
