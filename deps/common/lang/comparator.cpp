@@ -82,13 +82,23 @@ int like_compare_string(void *arg1, int arg1_max_length, void *arg2, int arg2_ma
       if (j == arg2_max_length) {
         return 0;
       }
-      while (i < maxlen && s1[i] != s2[j]) {
-        i++;
+      while (i < maxlen) {
+        while(s1[i] != s2[j] && i < maxlen)
+          i++;
+        if (i == maxlen) {
+          return 1;
+        }
+        if (0 == like_compare_string((void*)(s1 + i), arg1_max_length - i, (void*)(s2 + j), arg2_max_length - j)) {
+          return 0;
+        }
+        else {
+          i++;
+        }
       }
       if (i == maxlen) {
         return 1;
       }
-      continue;
+      return 1; // should not reach here
     }
     if ('_' == s2[j]) {
       i++, j++;
@@ -96,7 +106,7 @@ int like_compare_string(void *arg1, int arg1_max_length, void *arg2, int arg2_ma
     }
     break;
   }
-  if ( i == maxlen) {
+  if ( i == maxlen ) {
     if (j == arg2_max_length) {
       return 0;
     }
