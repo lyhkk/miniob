@@ -137,6 +137,8 @@ bool DefaultConditionFilter::filter(const Record &rec) const
   }
   if (comp_op_ == LIKE_OP) 
     return left_value.like_type_compare(right_value) == 0;
+  if (comp_op_ == NOT_LIKE_OP) 
+    return left_value.like_type_compare(right_value) != 0;
   int cmp_result = left_value.compare(right_value);
   switch (comp_op_) {
     case EQUAL_TO: return 0 == cmp_result;
