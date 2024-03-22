@@ -63,6 +63,7 @@ WHITE_SAPCE      [\ \t\b\f]
 DIGIT            [0-9]+
 
 ID               [A-Za-z_]+[A-Za-z0-9_]*
+ANY_CHAR         [^']*
 DOT              \.
 QUOTE            [\'\"]
 %x STR
@@ -88,6 +89,7 @@ HELP                                    RETURN_TOKEN(HELP);
 DESC                                    RETURN_TOKEN(DESC);
 CREATE                                  RETURN_TOKEN(CREATE);
 DROP                                    RETURN_TOKEN(DROP);
+LIKE                                    RETURN_TOKEN(LIKE);
 TABLE                                   RETURN_TOKEN(TABLE);
 TABLES                                  RETURN_TOKEN(TABLES);
 INDEX                                   RETURN_TOKEN(INDEX);

@@ -67,6 +67,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         SYNC
         INSERT
         DELETE
+        LIKE
         UPDATE
         LBRACE
         RBRACE
@@ -651,6 +652,7 @@ comp_op:
     | LE { $$ = LESS_EQUAL; }
     | GE { $$ = GREAT_EQUAL; }
     | NE { $$ = NOT_EQUAL; }
+    | LIKE { $$ = LIKE_OP; }
     ;
 
 load_data_stmt:

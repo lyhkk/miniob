@@ -49,15 +49,20 @@ Value::Value(const char *s, int len /*= 0*/) {
   char *p = (char *)s;
   if( sscanf(p, "%d-%d-%d", &y, &m, &d) ) {
     if (!check_date(y, m, d)) {
-      attr_type_ = UNDEFINED;
-      num_value_.int_value_ = -1;
-      // construct failed
+      invalid_date();
       return;
     }
     set_date(10000 * y + 100 * m + d);
   } else {
     set_string(s, len);
   } 
+}
+
+void Value::invalid_date()
+{
+  attr_type_ = UNDEFINED;
+  num_value_.int_value_ = -1;
+  length_ = -1;
 }
 
 bool Value::check_date(int y, int m, int d)
@@ -120,7 +125,7 @@ void Value::set_boolean(bool val)
 int Value::undefined_value()
 {
   if (attr_type_ == UNDEFINED) {
-    return -(num_value_.int_value_);
+    return -(num_value_.int_value_) & -(int)(length_);
   }
   return 0;
 }
@@ -214,6 +219,26 @@ std::string Value::to_string() const
     } break;
   }
   return os.str();
+}
+
+int Value::like_type_compare(const Value &other) const
+{
+  if (this->attr_type_ == other.attr_type_) {
+    switch (this->attr_type_) {
+      case CHARS: {
+        return common::like_compare_string((void *)this->str_value_.c_str(),
+            this->str_value_.length(),
+            (void *)other.str_value_.c_str(),
+            other.str_value_.length());
+      } break;
+      default: {
+        LOG_WARN("unsupported type: %d", this->attr_type_);
+      }
+    }
+  } else {
+    LOG_WARN("not supported");
+  }
+  return -1;  // TODO return rc?
 }
 
 int Value::compare(const Value &other) const

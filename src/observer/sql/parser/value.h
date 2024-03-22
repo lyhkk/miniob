@@ -62,10 +62,12 @@ public:
   void set_string(const char *s, int len = 0);
   void set_value(const Value &value);
   bool check_date(int y, int m, int d);
+  void invalid_date();
 
   std::string to_string() const;
 
   int compare(const Value &other) const;
+  int like_type_compare(const Value &other) const;
 
   const char *data() const;
   int         length() const { return length_; }
