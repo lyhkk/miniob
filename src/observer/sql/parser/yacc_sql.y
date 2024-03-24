@@ -67,6 +67,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         SYNC
         INSERT
         DELETE
+        LIKE
+        NOT_LIKE
         UPDATE
         LBRACE
         RBRACE
@@ -77,6 +79,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         INT_T
         STRING_T
         FLOAT_T
+        DATE_T
         HELP
         EXIT
         DOT //QUOTE
@@ -118,6 +121,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   float                             floats;
 }
 
+%token <string> DATE_STR
 %token <number> NUMBER
 %token <floats> FLOAT
 %token <string> ID
@@ -339,6 +343,7 @@ number:
     ;
 type:
     INT_T      { $$=INTS; }
+    | DATE_T  { $$=DATES; }
     | STRING_T { $$=CHARS; }
     | FLOAT_T  { $$=FLOATS; }
     ;
@@ -381,6 +386,12 @@ value:
     |FLOAT {
       $$ = new Value((float)$1);
       @$ = @1;
+    }
+    |DATE_STR {
+      char *tmp = common::substr($1,1,strlen($1)-2);
+      $$ = new Value(tmp);
+      free(tmp);
+      free($1);
     }
     |SSS {
       char *tmp = common::substr($1,1,strlen($1)-2);
@@ -642,6 +653,8 @@ comp_op:
     | LE { $$ = LESS_EQUAL; }
     | GE { $$ = GREAT_EQUAL; }
     | NE { $$ = NOT_EQUAL; }
+    | LIKE { $$ = LIKE_OP; }
+    | NOT_LIKE { $$ = NOT_LIKE_OP; }
     ;
 
 load_data_stmt:

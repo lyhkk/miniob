@@ -18,3 +18,4 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse_defs.h"
 
 RC parse(const char *st, ParsedSqlResult *sql_result);
+RC check_where_clause(ParsedSqlResult *sql_result);

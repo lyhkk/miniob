@@ -65,4 +65,60 @@ int compare_string(void *arg1, int arg1_max_length, void *arg2, int arg2_max_len
   return 0;
 }
 
+int like_compare_string(void *arg1, int arg1_max_length, void *arg2, int arg2_max_length)
+{
+  const char *s1     = (const char *)arg1;
+  const char *s2     = (const char *)arg2;
+  int         maxlen = arg1_max_length;
+  int         i      = 0; 
+  int         j      = 0;
+  while (i < maxlen) {
+    if (s1[i] == s2[j]) {
+      i++, j++;
+      continue;
+    }
+    if ('%' == s2[j]) {
+      j++;
+      if (j == arg2_max_length) {
+        return 0;
+      }
+      while (i < maxlen) {
+        while(s1[i] != s2[j] && i < maxlen)
+          i++;
+        if (i == maxlen) {
+          return 1;
+        }
+        if (0 == like_compare_string((void*)(s1 + i), arg1_max_length - i, (void*)(s2 + j), arg2_max_length - j)) {
+          return 0;
+        }
+        else {
+          i++;
+        }
+      }
+      if (i == maxlen) {
+        return 1;
+      }
+      return 1; // should not reach here
+    }
+    if ('_' == s2[j]) {
+      i++, j++;
+      continue;
+    }
+    break;
+  }
+  if ( i == maxlen ) {
+    if (j == arg2_max_length) {
+      return 0;
+    }
+    while (j < arg2_max_length) {
+      if (s2[j] != '%') {
+        return 1;
+      }
+      j++;
+    }
+    return 0;
+  }
+  return 1;
+}
+
 }  // namespace common

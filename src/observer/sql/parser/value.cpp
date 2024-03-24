@@ -16,9 +16,10 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/comparator.h"
 #include "common/lang/string.h"
 #include "common/log/log.h"
+#include <iostream>
 #include <sstream>
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates","ints", "floats", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -43,7 +44,35 @@ Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
 
-Value::Value(const char *s, int len /*= 0*/) { set_string(s, len); }
+Value::Value(const char *s, int len /*= 0*/) {
+  int y, m, d;
+  char *p = (char *)s;
+  if( sscanf(p, "%d-%d-%d", &y, &m, &d) ) {
+    if (!check_date(y, m, d)) {
+      invalid_date();
+      return;
+    }
+    set_date(10000 * y + 100 * m + d);
+  } else {
+    set_string(s, len);
+  } 
+}
+
+void Value::invalid_date()
+{
+  attr_type_ = UNDEFINED;
+  num_value_.int_value_ = -1;
+  length_ = -1;
+}
+
+bool Value::check_date(int y, int m, int d)
+{
+    static int mon[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    bool leap = (y%400==0 || (y%100 && y%4==0));
+    return y > 0
+        && (m > 0)&&(m <= 12)
+        && (d > 0)&&(d <= ((m==2 && leap)?1:0) + mon[m]);
+}
 
 void Value::set_data(char *data, int length)
 {
@@ -53,6 +82,11 @@ void Value::set_data(char *data, int length)
     } break;
     case INTS: {
       num_value_.int_value_ = *(int *)data;
+      length_               = length;
+    } break;
+    case DATES: {
+      int ymd = *(int*)data;
+      num_value_.int_value_ = ymd;
       length_               = length;
     } break;
     case FLOATS: {
@@ -87,6 +121,15 @@ void Value::set_boolean(bool val)
   num_value_.bool_value_ = val;
   length_                = sizeof(val);
 }
+
+int Value::undefined_value()
+{
+  if (attr_type_ == UNDEFINED) {
+    return -(num_value_.int_value_) & -(int)(length_);
+  }
+  return 0;
+}
+
 void Value::set_string(const char *s, int len /*= 0*/)
 {
   attr_type_ = CHARS;
@@ -97,6 +140,13 @@ void Value::set_string(const char *s, int len /*= 0*/)
     str_value_.assign(s);
   }
   length_ = str_value_.length();
+}
+
+void Value::set_date(int val)
+{
+  attr_type_            = DATES;
+  num_value_.int_value_ = val;
+  length_               = sizeof(val); // xxxx-xx-xx
 }
 
 void Value::set_value(const Value &value)
@@ -110,6 +160,9 @@ void Value::set_value(const Value &value)
     } break;
     case CHARS: {
       set_string(value.get_string().c_str());
+    } break;
+    case DATES: {
+      set_date(value.get_int());
     } break;
     case BOOLEANS: {
       set_boolean(value.get_boolean());
@@ -142,6 +195,19 @@ std::string Value::to_string() const
     case FLOATS: {
       os << common::double_to_str(num_value_.float_value_);
     } break;
+    case DATES: {
+      int y = num_value_.int_value_ / 10000;
+      int m = (num_value_.int_value_ % 10000) / 100;
+      int d = num_value_.int_value_ % 100;
+      if (m > 0 && m < 10) 
+        os << y << "-0" << m << "-";
+      else 
+        os << y << "-" << m << "-";
+      if (d > 0 && d < 10) 
+        os << "0" << d;
+      else
+        os << d;
+    } break;
     case BOOLEANS: {
       os << num_value_.bool_value_;
     } break;
@@ -155,6 +221,26 @@ std::string Value::to_string() const
   return os.str();
 }
 
+int Value::like_type_compare(const Value &other) const
+{
+  if (this->attr_type_ == other.attr_type_) {
+    switch (this->attr_type_) {
+      case CHARS: {
+        return common::like_compare_string((void *)this->str_value_.c_str(),
+            this->str_value_.length(),
+            (void *)other.str_value_.c_str(),
+            other.str_value_.length());
+      } break;
+      default: {
+        LOG_WARN("unsupported type: %d", this->attr_type_);
+      }
+    }
+  } else {
+    LOG_WARN("not supported");
+  }
+  return -1;  // TODO return rc?
+}
+
 int Value::compare(const Value &other) const
 {
   if (this->attr_type_ == other.attr_type_) {
@@ -164,6 +250,9 @@ int Value::compare(const Value &other) const
       } break;
       case FLOATS: {
         return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other.num_value_.float_value_);
+      } break;
+      case DATES: {
+        return common::compare_int((void *)&this->num_value_.int_value_, (void *)&other.num_value_.int_value_);
       } break;
       case CHARS: {
         return common::compare_string((void *)this->str_value_.c_str(),
@@ -206,6 +295,9 @@ int Value::get_int() const
     case FLOATS: {
       return (int)(num_value_.float_value_);
     }
+    case DATES: {
+      return num_value_.int_value_;
+    }
     case BOOLEANS: {
       return (int)(num_value_.bool_value_);
     }
@@ -233,6 +325,9 @@ float Value::get_float() const
     } break;
     case FLOATS: {
       return num_value_.float_value_;
+    } break;
+    case DATES: {
+      return float(num_value_.int_value_);
     } break;
     case BOOLEANS: {
       return float(num_value_.bool_value_);
@@ -274,6 +369,9 @@ bool Value::get_boolean() const
     case FLOATS: {
       float val = num_value_.float_value_;
       return val >= EPSILON || val <= -EPSILON;
+    } break;
+    case DATES: {
+      return num_value_.int_value_ != 0;
     } break;
     case BOOLEANS: {
       return num_value_.bool_value_;
