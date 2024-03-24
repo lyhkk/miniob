@@ -6,7 +6,7 @@
     "configurations": [
         {
             "name": "(gdb) 启动",
-            "type": "cppdbg",
+            "type": "gdb",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/observer",
             "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],
