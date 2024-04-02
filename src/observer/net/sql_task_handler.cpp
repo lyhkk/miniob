@@ -82,6 +82,8 @@ RC SqlTaskHandler::handle_sql(SQLStageEvent *sql_event)
     LOG_TRACE("failed to do execute. rc=%s", strrc(rc));
     return rc;
   }
-
+  // 如果event是insert语句，打印插入的值
+  // if (sql_event->sql_node()->flag == SCF_INSERT)
+    // std::cout << "sql_event:" << sql_event->sql_node()->insertion.values[1].to_string() << std::endl;
   return rc;
 }
