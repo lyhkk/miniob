@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include <iostream>
 #include <sstream>
+#include <regex>
 
 const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates","ints", "floats", "booleans"};
 
@@ -47,7 +48,10 @@ Value::Value(bool val) { set_boolean(val); }
 Value::Value(const char *s, int len /*= 0*/) {
   int y, m, d;
   char *p = (char *)s;
-  if( sscanf(p, "%d-%d-%d", &y, &m, &d) ) {
+  std::regex pattern("\\d+-\\d+-\\d+");
+  if( std::regex_match(p, pattern) ) {
+    sscanf(p, "%d-%d-%d", &y, &m, &d);
+    printf("y=%d, m=%d, d=%d\n", y, m, d);
     if (!check_date(y, m, d)) {
       invalid_date();
       return;
