@@ -39,9 +39,9 @@ AttrType attr_type_from_string(const char *s)
   return UNDEFINED;
 }
 
-Value::Value(int val) { set_int(val); }
+Value::Value(int val) { set_int(val);}
 
-Value::Value(float val) { set_float(val); }
+Value::Value(float val) { set_float(val); flag_for_func_.is_round_func_ = false;}
 
 Value::Value(bool val) { set_boolean(val); }
 
@@ -50,14 +50,15 @@ Value::Value(const char *s, int len /*= 0*/) {
   char *p = (char *)s;
   std::regex pattern("\\d+-\\d+-\\d+");
   if( std::regex_match(p, pattern) ) {
+    flag_for_func_.is_date_format_func_ = false;
     sscanf(p, "%d-%d-%d", &y, &m, &d);
-    printf("y=%d, m=%d, d=%d\n", y, m, d);
     if (!check_date(y, m, d)) {
       invalid_date();
       return;
     }
     set_date(10000 * y + 100 * m + d);
   } else {
+    flag_for_func_.is_length_func_ = false;
     set_string(s, len);
   } 
 }

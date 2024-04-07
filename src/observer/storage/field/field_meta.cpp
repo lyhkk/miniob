@@ -16,8 +16,11 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/log/log.h"
 #include "sql/parser/parse_defs.h"
+#include "sql/parser/value.h"
 
 #include "json/json.h"
+#include <ctime>
+#include <string>
 
 const static Json::StaticString FIELD_NAME("name");
 const static Json::StaticString FIELD_TYPE("type");
@@ -27,13 +30,13 @@ const static Json::StaticString FIELD_VISIBLE("visible");
 
 FieldMeta::FieldMeta() : attr_type_(AttrType::UNDEFINED), attr_offset_(-1), attr_len_(0), visible_(false) {}
 
-FieldMeta::FieldMeta(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible)
+FieldMeta::FieldMeta(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible, bool is_length_func, bool is_round_func, std::string date_format)
 {
-  [[maybe_unused]] RC rc = this->init(name, attr_type, attr_offset, attr_len, visible);
+  [[maybe_unused]] RC rc = this->init(name, attr_type, attr_offset, attr_len, visible, is_length_func, is_round_func, date_format);
   ASSERT(rc == RC::SUCCESS, "failed to init field meta. rc=%s", strrc(rc));
 }
 
-RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible)
+RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible, bool is_length_func, bool is_round_func, std::string date_format)
 {
   if (common::is_blank(name)) {
     LOG_WARN("Name cannot be empty");
@@ -51,6 +54,9 @@ RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int at
   attr_len_    = attr_len;
   attr_offset_ = attr_offset;
   visible_     = visible;
+  is_length_func = false;
+  is_round_func = false;
+  date_format = "";
 
   LOG_INFO("Init a field with name=%s", name);
   return RC::SUCCESS;
@@ -59,6 +65,105 @@ RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int at
 const char *FieldMeta::name() const { return name_.c_str(); }
 
 AttrType FieldMeta::type() const { return attr_type_; }
+
+AttrType FieldMeta::function_type(AttrType type) const {
+  if (this->is_length_func) {
+    return AttrType::INTS;
+  }
+  else if (this->is_round_func) {
+    return AttrType::INTS;
+  }
+  else if (this->date_format != "") {
+    return AttrType::CHARS;
+  }
+  else {
+    return type;
+  }
+}
+
+const char* FieldMeta::function_alias(const char *table_name, const char *field_name) const{
+  char *alias = new char[100];
+
+  // 得到完整的字段名
+  char *whole_name = new char[100];
+  if (table_name != nullptr) {
+    strcpy(whole_name, table_name);
+    strcat(whole_name, ".");
+    strcat(whole_name, field_name);
+  }
+  else {
+    strcpy(whole_name, field_name);
+  }
+
+  // 判断是否是函数
+  std::string whole_name_str = whole_name; 
+  if (this->is_length_func == 1) {
+    std::string tmp = "LENGTH(" + whole_name_str + ")";
+    strcpy(alias, tmp.c_str());
+  }
+  else if (this->is_round_func == 1) {
+    std::string tmp = "ROUND(" + whole_name_str + ")";
+    strcpy(alias, tmp.c_str());
+  }
+  else if (this->date_format != "") {
+    std::string tmp = "DATE_FORMAT(" + whole_name_str + ", '" + this->date_format + "')";
+    strcpy(alias, tmp.c_str());
+  }
+  else {
+    return nullptr;
+  }
+  return alias;
+}
+
+void FieldMeta::function_data(Value &cell) const
+{
+  if (this->is_length_func == 1) {
+    std::string temp = cell.get_string();
+    cell.set_int(temp.length());
+    cell.flag_for_func_.is_length_func_ = 1;
+    // this->is_length_func = 0;
+  } 
+  else if (this->is_round_func == 1) {
+    float value = cell.get_float();
+    int temp = (int)value;
+    if (value - (int)value >= 0.5) {
+      temp = temp + 1;
+    }
+    cell.set_int(temp);
+    cell.flag_for_func_.is_round_func_ = 1;
+    // this->is_round_func = 0;
+  }
+  else if (this->date_format != "") {
+    std::string date_format = this->date_format;
+    int date = cell.get_int();
+    std::string date_str = std::to_string(date);
+    std::stringstream ss(date_str);
+    tm tm = {};
+    char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
+    if (formatted_date == NULL) {
+      LOG_ERROR("Failed to parse date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+    }
+    else {
+      char buffer[80];
+      strftime(buffer, 80, date_format.c_str(), &tm);
+      cell.set_string(buffer);
+      cell.flag_for_func_.is_date_format_func_ = 1;
+      // this->date_format = "";
+    }
+  }
+  else {
+    cell.flag_for_func_.is_length_func_ = 0;
+    cell.flag_for_func_.is_round_func_ = 0;
+    cell.flag_for_func_.is_date_format_func_ = 0;
+  }
+}
+
+void FieldMeta::reset_function_flag()
+{
+  this->is_length_func = 0;
+  this->is_round_func = 0;
+  this->date_format = "";
+}
 
 int FieldMeta::offset() const { return attr_offset_; }
 
@@ -69,7 +174,7 @@ bool FieldMeta::visible() const { return visible_; }
 void FieldMeta::desc(std::ostream &os) const
 {
   os << "field name=" << name_ << ", type=" << attr_type_to_string(attr_type_) << ", len=" << attr_len_
-     << ", visible=" << (visible_ ? "yes" : "no");
+    << ", visible=" << (visible_ ? "yes" : "no");
 }
 
 void FieldMeta::to_json(Json::Value &json_value) const

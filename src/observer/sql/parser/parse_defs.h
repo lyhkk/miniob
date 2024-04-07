@@ -37,6 +37,9 @@ struct RelAttrSqlNode
 {
   std::string relation_name;   ///< relation name (may be NULL) 表名
   std::string attribute_name;  ///< attribute name              属性名
+  bool is_length_func;   ///< 是否是长度函数
+  bool is_round_func;      ///< 是否是round函数
+  std::string date_format;        ///< 是否是date_format函数
 };
 
 /**

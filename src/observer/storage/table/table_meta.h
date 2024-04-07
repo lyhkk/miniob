@@ -46,7 +46,9 @@ public:
   const FieldMeta              *trx_field() const;
   const FieldMeta              *field(int index) const;
   const FieldMeta              *field(const char *name) const;
+  const FieldMeta              *field(const RelAttrSqlNode rel_attr); // 为了支持function, 传入一个rel_attr, 修改field
   const FieldMeta              *find_field_by_offset(int offset) const;
+  RC                            function_field(FieldMeta &field, RelAttrSqlNode rel_attr);
   const std::vector<FieldMeta> *field_metas() const { return &fields_; }
   auto                          trx_fields() const -> const std::pair<const FieldMeta *, int>;
 

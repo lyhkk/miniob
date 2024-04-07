@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "common/rc.h"
 #include "storage/db/db.h"
+#include "storage/index/index_meta.h"
 #include "storage/table/table.h"
 
 FilterStmt::~FilterStmt()
@@ -67,8 +68,7 @@ RC get_table_and_field(Db *db, Table *default_table, std::unordered_map<std::str
     LOG_WARN("No such table: attr.relation_name: %s", attr.relation_name.c_str());
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
-
-  field = table->table_meta().field(attr.attribute_name.c_str());
+  field = table->table_meta_for_function().field(attr);
   if (nullptr == field) {
     LOG_WARN("no such field in table: table %s, field %s", table->name(), attr.attribute_name.c_str());
     table = nullptr;

@@ -83,7 +83,16 @@ public:
   float       get_float() const;
   std::string get_string() const;
   bool        get_boolean() const;
-  int         undefined_value();
+  int         undefined_value(); // date类型数据如果invalid，通过这个接口传回1/0，表示是否有效
+
+public:
+  // 为了支持function功能下，置位value后，重新恢复内存中的value
+  union
+  {
+    bool is_length_func_;
+    bool is_round_func_;
+    bool is_date_format_func_;
+  } flag_for_func_;
 
 private:
   AttrType attr_type_ = UNDEFINED;

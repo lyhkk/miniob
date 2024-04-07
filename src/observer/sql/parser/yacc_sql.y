@@ -70,6 +70,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         LIKE
         NOT_LIKE
         UPDATE
+        LENGTH
+        ROUND
+        DATE_FORMAT
         LBRACE
         RBRACE
         COMMA
@@ -534,6 +537,20 @@ rel_attr:
       $$->attribute_name = $3;
       free($1);
       free($3);
+    }
+    | LENGTH LBRACE rel_attr RBRACE {
+      $$ = $3;
+      $$->is_length_func = true;
+    }
+    | ROUND LBRACE rel_attr RBRACE {
+      $$ = $3;
+      $$->is_round_func = true;
+    }
+    | DATE_FORMAT LBRACE rel_attr COMMA SSS RBRACE {
+      char *date_format = common::substr($5, 1, strlen($5) - 2);
+      $$ = $3;
+      $$->date_format.assign(date_format);
+      free(date_format);
     }
     ;
 

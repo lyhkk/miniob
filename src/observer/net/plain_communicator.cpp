@@ -243,7 +243,6 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
   Tuple *tuple = nullptr;
   while (RC::SUCCESS == (rc = sql_result->next_tuple(tuple))) {
     assert(tuple != nullptr);
-
     int cell_num = tuple->cell_num();
     for (int i = 0; i < cell_num; i++) {
       if (i != 0) {
@@ -265,13 +264,13 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
       }
 
       string cell_str = value.to_string();
-
       rc = writer_->writen(cell_str.data(), cell_str.size());
       if (OB_FAIL(rc)) {
         LOG_WARN("failed to send data to client. err=%s", strerror(errno));
         sql_result->close();
         return rc;
       }
+      reset_value_after_function_call(value);
     }
 
     char newline = '\n';
@@ -308,4 +307,20 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
   }
 
   return rc;
+}
+
+void PlainCommunicator::reset_value_after_function_call(Value &value) {
+  if (value.flag_for_func_.is_date_format_func_ == 1) {
+    value.flag_for_func_.is_date_format_func_ = 0;
+    value.set_type(AttrType::DATES);
+  }
+  else if (value.flag_for_func_.is_length_func_ == 1) {
+    value.flag_for_func_.is_length_func_ = 0;
+    value.set_type(AttrType::CHARS);
+  }
+  else if (value.flag_for_func_.is_round_func_ == 1) {
+    value.flag_for_func_.is_round_func_ = 0;
+    value.set_type(AttrType::FLOATS);
+  }
+  return;
 }

@@ -97,7 +97,7 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
         if (0 == strcmp(field_name, "*")) {
           wildcard_fields(table, query_fields);
         } else {
-          const FieldMeta *field_meta = table->table_meta().field(field_name);
+          const FieldMeta *field_meta = table->table_meta_for_function().field(relation_attr);
           if (nullptr == field_meta) {
             LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
             return RC::SCHEMA_FIELD_MISSING;
@@ -113,7 +113,7 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
       }
 
       Table           *table      = tables[0];
-      const FieldMeta *field_meta = table->table_meta().field(relation_attr.attribute_name.c_str());
+      const FieldMeta *field_meta = table->table_meta_for_function().field(relation_attr);
       if (nullptr == field_meta) {
         LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), relation_attr.attribute_name.c_str());
         return RC::SCHEMA_FIELD_MISSING;

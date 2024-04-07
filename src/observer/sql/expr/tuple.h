@@ -93,7 +93,6 @@ public:
    * @param[out] cell 返回的cell
    */
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
-
   virtual std::string to_string() const
   {
     std::string str;
@@ -145,6 +144,33 @@ public:
     }
   }
 
+  // 重写to_string, 以实现对function的支持
+  std::string to_string() const override
+  {
+    std::string str;
+    const int   cell_num = this->cell_num();
+    for (int i = 0; i < cell_num - 1; i++) {
+      Value cell;
+      cell_at(i, cell);
+      std::string tmp = cell.to_string();
+      str += ", ";
+      cell.flag_for_func_.is_length_func_ = false;
+      cell.flag_for_func_.is_round_func_ = false;
+      cell.flag_for_func_.is_date_format_func_ = false;
+    }
+
+    if (cell_num > 0) {
+      Value cell;
+      cell_at(cell_num - 1, cell);
+      std::string tmp = cell.to_string();
+      cell.flag_for_func_.is_length_func_ = false;
+      cell.flag_for_func_.is_round_func_ = false;
+      cell.flag_for_func_.is_date_format_func_ = false;
+      // cell.reset_func_flag();
+    }
+    return str;
+  }
+
   int cell_num() const override { return speces_.size(); }
 
   RC cell_at(int index, Value &cell) const override
@@ -156,8 +182,10 @@ public:
 
     FieldExpr       *field_expr = speces_[index];
     const FieldMeta *field_meta = field_expr->field().meta();
-    cell.set_type(field_meta->type());
+    AttrType         field_type = field_meta->type();
+    cell.set_type(field_type);
     cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+    field_meta->function_data(cell);
     return RC::SUCCESS;
   }
 
