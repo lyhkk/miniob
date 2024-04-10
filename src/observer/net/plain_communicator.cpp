@@ -270,7 +270,7 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
         sql_result->close();
         return rc;
       }
-      reset_value_after_function_call(value);
+      // reset_value_after_function_call(value);
     }
 
     char newline = '\n';
@@ -309,18 +309,18 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
   return rc;
 }
 
-void PlainCommunicator::reset_value_after_function_call(Value &value) {
-  if (value.flag_for_func_.is_date_format_func_ == 1) {
-    value.flag_for_func_.is_date_format_func_ = 0;
-    value.set_type(AttrType::DATES);
-  }
-  else if (value.flag_for_func_.is_length_func_ == 1) {
-    value.flag_for_func_.is_length_func_ = 0;
-    value.set_type(AttrType::CHARS);
-  }
-  else if (value.flag_for_func_.is_round_func_ == 1) {
-    value.flag_for_func_.is_round_func_ = 0;
-    value.set_type(AttrType::FLOATS);
-  }
-  return;
-}
+// void PlainCommunicator::reset_value_after_function_call(Value &value) {
+//   if (value.flag_for_func_.is_date_format_func_ == 1) {
+//     value.flag_for_func_.is_date_format_func_ = 0;
+//     value.set_type(AttrType::DATES);
+//   }
+//   else if (value.flag_for_func_.is_length_func_ == 1) {
+//     value.flag_for_func_.is_length_func_ = 0;
+//     value.set_type(AttrType::CHARS);
+//   }
+//   else if (value.flag_for_func_.is_round_func_ == 1) {
+//     value.flag_for_func_.is_round_func_ = 0;
+//     value.set_type(AttrType::FLOATS);
+//   }
+//   return;
+// }

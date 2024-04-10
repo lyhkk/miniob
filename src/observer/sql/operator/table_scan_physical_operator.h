@@ -43,6 +43,11 @@ public:
 
   void set_predicates(std::vector<std::unique_ptr<Expression>> &&exprs);
 
+public:
+  int is_length_func_;
+  int is_round_func_;
+  std::string date_format_;
+
 private:
   RC filter(RowTuple &tuple, bool &result);
 

@@ -89,9 +89,9 @@ public:
   // 为了支持function功能下，置位value后，重新恢复内存中的value
   union
   {
-    bool is_length_func_;
-    bool is_round_func_;
-    bool is_date_format_func_;
+    int is_length_func_;
+    int is_round_func_;
+    int is_date_format_func_;
   } flag_for_func_;
 
 private:

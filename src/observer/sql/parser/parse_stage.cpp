@@ -60,6 +60,7 @@ RC ParseStage::handle_request(SQLStageEvent *sql_event)
   ParsedSqlResult parsed_sql_result;
 
   parse(sql.c_str(), &parsed_sql_result);
+  // check date format, if date format is illegal, return error
   if (check_where_clause(&parsed_sql_result) != RC::SUCCESS) {
     sql_result->set_return_code(RC::INVALID_ARGUMENT);
     return RC::INVALID_ARGUMENT;

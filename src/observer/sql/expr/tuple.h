@@ -52,8 +52,12 @@ class TupleSchema
 {
 public:
   void append_cell(const TupleCellSpec &cell) { cells_.push_back(cell); }
-  void append_cell(const char *table, const char *field) { append_cell(TupleCellSpec(table, field)); }
-  void append_cell(const char *alias) { append_cell(TupleCellSpec(alias)); }
+  void append_cell(const char *table, const char *field, int is_length_func, int is_round_func, const char *date_format) { 
+    append_cell(TupleCellSpec(table, field, nullptr, is_length_func, is_round_func, date_format)); 
+  }
+  void append_cell(const char *alias, int is_length_func, int is_round_func, const char* date_format) {
+    append_cell(TupleCellSpec(alias, is_length_func, is_round_func, date_format)); 
+  }
   int  cell_num() const { return static_cast<int>(cells_.size()); }
 
   const TupleCellSpec &cell_at(int i) const { return cells_[i]; }
@@ -144,33 +148,6 @@ public:
     }
   }
 
-  // 重写to_string, 以实现对function的支持
-  std::string to_string() const override
-  {
-    std::string str;
-    const int   cell_num = this->cell_num();
-    for (int i = 0; i < cell_num - 1; i++) {
-      Value cell;
-      cell_at(i, cell);
-      std::string tmp = cell.to_string();
-      str += ", ";
-      cell.flag_for_func_.is_length_func_ = false;
-      cell.flag_for_func_.is_round_func_ = false;
-      cell.flag_for_func_.is_date_format_func_ = false;
-    }
-
-    if (cell_num > 0) {
-      Value cell;
-      cell_at(cell_num - 1, cell);
-      std::string tmp = cell.to_string();
-      cell.flag_for_func_.is_length_func_ = false;
-      cell.flag_for_func_.is_round_func_ = false;
-      cell.flag_for_func_.is_date_format_func_ = false;
-      // cell.reset_func_flag();
-    }
-    return str;
-  }
-
   int cell_num() const override { return speces_.size(); }
 
   RC cell_at(int index, Value &cell) const override
@@ -181,11 +158,13 @@ public:
     }
 
     FieldExpr       *field_expr = speces_[index];
-    const FieldMeta *field_meta = field_expr->field().meta();
-    AttrType         field_type = field_meta->type();
-    cell.set_type(field_type);
+    Field            field = field_expr->field();
+    const FieldMeta *field_meta = field.meta();
+    //AttrType         field_type = field.get_function_type();
+
+    cell.set_type(field_meta->type());
     cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
-    field_meta->function_data(cell);
+    field.function_data(cell);
     return RC::SUCCESS;
   }
 
@@ -198,8 +177,11 @@ public:
     }
 
     for (size_t i = 0; i < speces_.size(); ++i) {
-      const FieldExpr *field_expr = speces_[i];
-      const Field     &field      = field_expr->field();
+      FieldExpr       *field_expr = speces_[i];
+      Field            field      = field_expr->field();
+      field_expr->field().is_length_func_ = spec.is_length_func_;
+      field_expr->field().is_round_func_ = spec.is_round_func_;
+      field_expr->field().date_format_ = spec.date_format_;
       if (0 == strcmp(field_name, field.field_name())) {
         return cell_at(i, cell);
       }

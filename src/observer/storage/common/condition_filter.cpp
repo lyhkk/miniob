@@ -66,7 +66,7 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 
   if (1 == condition.left_is_attr) {
     left.is_attr                = true;
-    const FieldMeta *field_left = table_meta.field(condition.left_attr);
+    const FieldMeta *field_left = table_meta.field(condition.left_attr.attribute_name.c_str());
     if (nullptr == field_left) {
       LOG_WARN("No such field in condition. %s.%s", table.name(), condition.left_attr.attribute_name.c_str());
       return RC::SCHEMA_FIELD_MISSING;
@@ -75,7 +75,7 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
     left.attr_offset = field_left->offset();
 
     type_left = field_left->type();
-    type_left = field_left->function_type(type_left); // 为了支持function功能，condition下需要转换类型
+    type_left = condition.left_attr.get_func_attr_type(type_left);  // 为了支持function功能，condition下需要转换类型
   } else {
     left.is_attr = false;
     left.value   = condition.left_value;  // 校验type 或者转换类型
@@ -87,7 +87,7 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 
   if (1 == condition.right_is_attr) {
     right.is_attr                = true;
-    const FieldMeta *field_right = table_meta.field(condition.right_attr);
+    const FieldMeta *field_right = table_meta.field(condition.right_attr.attribute_name.c_str());
     if (nullptr == field_right) {
       LOG_WARN("No such field in condition. %s.%s", table.name(), condition.right_attr.attribute_name.c_str());
       return RC::SCHEMA_FIELD_MISSING;
@@ -95,7 +95,7 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
     right.attr_length = field_right->len();
     right.attr_offset = field_right->offset();
     type_right        = field_right->type();
-    type_right        = field_right->function_type(type_right);  // 为了支持function功能，condition下需要转换类型
+    type_right        = condition.right_attr.get_func_attr_type(type_right); // 为了支持function功能，condition下需要转换类型
   } else {
     right.is_attr = false;
     right.value   = condition.right_value;

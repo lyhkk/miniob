@@ -2195,7 +2195,7 @@ yyreduce:
 #line 541 "yacc_sql.y"
                                     {
       (yyval.rel_attr) = (yyvsp[-1].rel_attr);
-      (yyval.rel_attr)->is_length_func = true;
+      (yyval.rel_attr)->is_length_func = 1;
     }
 #line 2201 "yacc_sql.cpp"
     break;
@@ -2204,7 +2204,7 @@ yyreduce:
 #line 545 "yacc_sql.y"
                                    {
       (yyval.rel_attr) = (yyvsp[-1].rel_attr);
-      (yyval.rel_attr)->is_round_func = true;
+      (yyval.rel_attr)->is_round_func = 1;
     }
 #line 2210 "yacc_sql.cpp"
     break;

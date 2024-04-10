@@ -12,8 +12,6 @@ See the Mulan PSL v2 for more details. */
 // Created by Longda on 2021/4/13.
 //
 
-#include <cstddef>
-#include <sstream>
 #include <string>
 
 #include "sql/executor/execute_stage.h"
@@ -69,21 +67,20 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
       bool        with_table_name = select_stmt->tables().size() > 1;
 
       for (const Field &field : select_stmt->query_fields()) {
-        const FieldMeta *field_meta = field.meta();
         if (with_table_name) {
           // 这个alias是为了支持函数的别名
-          const char *alias = field_meta->function_alias(field.table_name(), field.field_name());
+          const char *alias = field.function_alias(field.table_name(), field.field_name());
           if (alias != nullptr) {
-            schema.append_cell(alias);
+            schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.date_format_.c_str());
           } else {
-            schema.append_cell(field.table_name(), field.field_name());
+            schema.append_cell(field.table_name(), field.field_name(), field.is_length_func_, field.is_round_func_, field.date_format_.c_str());
           }
         } else {
-          const char *alias = field_meta->function_alias(nullptr, field.field_name());
+          const char *alias = field.function_alias(nullptr, field.field_name());
           if (alias != nullptr) {
-            schema.append_cell(alias);
+            schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.date_format_.c_str());
           } else {
-            schema.append_cell(field.field_name());
+            schema.append_cell(field.field_name(), field.is_length_func_, field.is_round_func_, field.date_format_.c_str());
           }
         }
       }

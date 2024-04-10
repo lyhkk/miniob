@@ -15,7 +15,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/expr/tuple_cell.h"
 #include "common/lang/string.h"
 
-TupleCellSpec::TupleCellSpec(const char *table_name, const char *field_name, const char *alias)
+TupleCellSpec::TupleCellSpec(const char *table_name, const char *field_name, const char *alias, int is_length_func, int is_round_func, const char *date_format)
 {
   if (table_name) {
     table_name_ = table_name;
@@ -32,11 +32,27 @@ TupleCellSpec::TupleCellSpec(const char *table_name, const char *field_name, con
       alias_ = table_name_ + "." + field_name_;
     }
   }
+  is_length_func_ = is_length_func;
+  is_round_func_ = is_round_func;
+  if (date_format) {
+    date_format_ = date_format;
+  }
+  else {
+    date_format_ = "";
+  }
 }
 
-TupleCellSpec::TupleCellSpec(const char *alias)
+TupleCellSpec::TupleCellSpec(const char *alias, int is_length_func, int is_round_func, const char *date_format)
 {
   if (alias) {
     alias_ = alias;
+  }
+  is_length_func_ = is_length_func;
+  is_round_func_ = is_round_func;
+  if (date_format) {
+    date_format_ = date_format;
+  }
+  else {
+    date_format_ = "";
   }
 }

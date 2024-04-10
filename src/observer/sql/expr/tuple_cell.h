@@ -20,12 +20,17 @@ See the Mulan PSL v2 for more details. */
 class TupleCellSpec
 {
 public:
-  TupleCellSpec(const char *table_name, const char *field_name, const char *alias = nullptr);
-  TupleCellSpec(const char *alias);
-
+  TupleCellSpec(const char *table_name, const char *field_name, const char *alias = nullptr, int is_length_func = 0, int is_round_func = 0, const char *date_format = nullptr);
+  TupleCellSpec(const char *alias, int is_length_func = 0, int is_round_func = 0, const char *date_format = nullptr);
   const char *table_name() const { return table_name_.c_str(); }
   const char *field_name() const { return field_name_.c_str(); }
   const char *alias() const { return alias_.c_str(); }
+
+public:
+  // for function
+  int is_length_func_;
+  int is_round_func_;
+  std::string date_format_;
 
 private:
   std::string table_name_;

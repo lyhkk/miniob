@@ -540,11 +540,11 @@ rel_attr:
     }
     | LENGTH LBRACE rel_attr RBRACE {
       $$ = $3;
-      $$->is_length_func = true;
+      $$->is_length_func = 1;
     }
     | ROUND LBRACE rel_attr RBRACE {
       $$ = $3;
-      $$->is_round_func = true;
+      $$->is_round_func = 1;
     }
     | DATE_FORMAT LBRACE rel_attr COMMA SSS RBRACE {
       char *date_format = common::substr($5, 1, strlen($5) - 2);

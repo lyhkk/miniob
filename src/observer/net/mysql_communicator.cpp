@@ -545,7 +545,7 @@ RC decode_query_packet(std::vector<char> &net_packet, QueryPacket &query_packet)
 RC create_version_comment_sql_result(SqlResult *sql_result)
 {
   TupleSchema   tuple_schema;
-  TupleCellSpec cell_spec("", "", "@@version_comment");
+  TupleCellSpec cell_spec("@@version_comment");
   tuple_schema.append_cell(cell_spec);
 
   sql_result->set_return_code(RC::SUCCESS);

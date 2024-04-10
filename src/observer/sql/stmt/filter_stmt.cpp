@@ -68,7 +68,7 @@ RC get_table_and_field(Db *db, Table *default_table, std::unordered_map<std::str
     LOG_WARN("No such table: attr.relation_name: %s", attr.relation_name.c_str());
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
-  field = table->table_meta_for_function().field(attr);
+  field = table->table_meta().field(attr.attribute_name.c_str());
   if (nullptr == field) {
     LOG_WARN("no such field in table: table %s, field %s", table->name(), attr.attribute_name.c_str());
     table = nullptr;
@@ -100,7 +100,15 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
       return rc;
     }
     FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, field));
+    int is_length_func = condition.left_attr.is_length_func;
+    int is_round_func  = condition.left_attr.is_round_func;
+    std::string date_format = condition.left_attr.date_format;
+    Field field_obj = Field(table, field, is_length_func, is_round_func, date_format);
+    RC rc = field_obj.check_function_type(condition.left_attr);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    filter_obj.init_attr(field_obj);
     filter_unit->set_left(filter_obj);
   } else {
     FilterObj filter_obj;
@@ -117,7 +125,15 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
       return rc;
     }
     FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, field));
+    int is_length_func = condition.right_attr.is_length_func;
+    int is_round_func  = condition.right_attr.is_round_func;
+    std::string date_format = condition.right_attr.date_format;
+    Field field_obj = Field(table, field, is_length_func, is_round_func, date_format);
+    RC rc = field_obj.check_function_type(condition.right_attr);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+    filter_obj.init_attr(field_obj);
     filter_unit->set_right(filter_obj);
   } else {
     FilterObj filter_obj;
@@ -128,5 +144,13 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
   filter_unit->set_comp(comp);
 
   // 检查两个类型是否能够比较
+  /*
+  AttrType left_type  = filter_unit->left().field.attr_type();
+  AttrType right_type = filter_unit->right().field.attr_type();
+  // 如果是函数类型，需要检查函数返回值类型是否一致
+  if (filter_unit->left().field.get_function_type() != filter_unit->right().get_function_type()) {
+    LOG_WARN("filter left&right type mismatch");
+    return RC::INVALID_ARGUMENT;
+  }*/
   return rc;
 }

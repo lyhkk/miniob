@@ -127,52 +127,6 @@ const FieldMeta *TableMeta::field(const char *name) const
   return nullptr;
 }
 
-RC TableMeta::function_field(FieldMeta &field, RelAttrSqlNode rel_attr)
-{
-  if (rel_attr.is_length_func == 1) {
-    if (field.type() != AttrType::CHARS)
-    {
-      return RC::INVALID_ARGUMENT;
-    }
-    field.is_length_func = true;
-  } 
-  else if (rel_attr.is_round_func == 1) {
-    if (field.type() != AttrType::FLOATS)
-    {
-      return RC::INVALID_ARGUMENT;
-    }
-    field.is_round_func = true;
-  }
-  else if (rel_attr.date_format != "") {
-    if (field.type() != AttrType::DATES)
-    {
-      return RC::INVALID_ARGUMENT;
-    }
-    field.date_format = rel_attr.date_format;
-  }
-  else {
-    field.is_length_func = false;
-    field.is_round_func = false;
-    field.date_format = "";
-  }
-  return RC::SUCCESS;
-}
-
-const FieldMeta *TableMeta::field(const RelAttrSqlNode rel_attr)
-{
-  for (FieldMeta &field : fields_) {
-    if (0 == strcmp(field.name(), rel_attr.attribute_name.c_str())) {
-      RelAttrSqlNode rel_attr_copy = rel_attr;
-      RC rc  = function_field(field, rel_attr_copy); // function的类型检查
-      if (rc != RC::SUCCESS) {
-        return nullptr;
-      }
-      return &field;
-    }
-  }
-  return nullptr;
-}
-
 const FieldMeta *TableMeta::find_field_by_offset(int offset) const
 {
   for (const FieldMeta &field : fields_) {
