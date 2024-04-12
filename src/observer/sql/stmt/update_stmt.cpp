@@ -14,14 +14,24 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/update_stmt.h"
 #include "common/log/log.h"
+#include "sql/parser/value.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
+#include <utility>
 
 #define VALUE_NUM 1
 
-UpdateStmt::UpdateStmt(Table *table, const Value *values, int value_amount)
-    : table_(table), values_(values), value_amount_(value_amount)
+UpdateStmt::UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<std::unique_ptr<Expression>>&& values, FilterStmt *filter_stmt)
+             :table_(table), fields_(std::move(fields)), values_(values), filter_stmt_(filter_stmt)
 {}
+
+UpdateStmt::~UpdateStmt()
+{
+  if(nullptr != filter_stmt_) {
+    delete filter_stmt_;
+    filter_stmt_ = nullptr;
+  }
+}
 
 RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 {
@@ -38,29 +48,73 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  // check the fields number
-  const Value     *values      = &update.value;
+  //check attribute amount and value amount
+  if (update.attribute_name.size() != update.value.size()) {
+    LOG_WARN("invalid argument, column size not equal value size");
+    return RC::INVALID_ARGUMENT;
+  }
+  std::vector<std::unique_ptr<Expression>> values;
+  std::vector<FieldMeta> fields;
   const TableMeta &table_meta = table->table_meta();
-  const int        field_num  = table_meta.field_num() - table_meta.sys_field_num();
-  if (field_num != 1) {
-    LOG_WARN("schema mismatch. value num=1, field num in schema=%d", field_num);
-    return RC::SCHEMA_FIELD_MISSING;
-  }
-
-  // check fields type
-  const int sys_field_num = table_meta.sys_field_num();
-  for (int i = 0; i < VALUE_NUM; i++) {
-    const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
-    const AttrType   field_type = field_meta->type();
-    const AttrType   value_type = values->attr_type();
-    if (field_type != value_type) {
-      LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-          table_name, field_meta->name(), field_type, value_type);
-      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+  for (size_t i = 0; i < update.attribute_name.size(); i++) {
+    const FieldMeta* update_field = table_meta.field(update.attribute_name[i].c_str());
+    bool valid = false;
+    if (nullptr != update_field) {
+      if (update.value[i]->type() == ExprType::VALUE) {
+        const Value& val = static_cast<ValueExpr*>(update.value[i])->get_value();
+        if (update_field->type() == val.attr_type() || (val.is_null() && update_field->nullable())) {
+          if (update_field->type() == CHARS && update_field->len() < val.length()) {
+            LOG_WARN("update chars with longer length");
+          } else {
+            valid = true;
+          }
+          // 将不确定长度的 char 改为固定长度的 char
+          if (valid && CHARS == update_field->type()) {
+            char *char_value = (char*)malloc(update_field->len());
+            memset(char_value, 0, update_field->len());
+            memcpy(char_value, val.data(), val.length());
+            const_cast<Value&>(val).set_data(char_value, update_field->len());
+            free(char_value);
+          }
+        } else if (TEXTS == update_field->type() && CHARS == val.attr_type()) {
+          if (MAX_TEXT_LENGTH < val.length()) {
+            LOG_WARN("Text length:%d, over max_length 65535", val.length());
+            return RC::INVALID_ARGUMENT;
+          }
+          valid = true;
+        } else if (const_cast<Value&>(val).typecast(update_field->type()) != RC::SUCCESS) {
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+            table->name(), update_field->name(), update_field->type(), val.attr_type());
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        } else {
+          valid = true;
+        }
+      } else {
+        if (RC rc = update.values[i]->traverse_check(check_field); RC::SUCCESS != rc) {
+          return rc;
+        }
+        valid = true; // 其他类型的表达式先暂时认为有效
+      }
     }
+    if (!valid) {
+      LOG_WARN("update field type mismatch. table=%s", table_name);
+      return RC::INVALID_ARGUMENT;
+    }
+    fields.emplace_back(*update_field);
+    values.emplace_back(update.values[i]);
   }
+  update.values.clear();
 
+  std::unordered_map<std::string, Table *> table_map;
+  table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
+  FilterStmt *filter_stmt = nullptr;
+  RC rc = FilterStmt::create(
+      db, table, &table_map, update.conditions, filter_stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
   // everything alright
-  stmt = new UpdateStmt(table, values, VALUE_NUM);
+  stmt = new UpdateStmt(table, std::move(fields), std::move(values), filter_stmt);
   return RC::SUCCESS;
 }

@@ -12,11 +12,14 @@ See the Mulan PSL v2 for more details. */
 // Created by Meiyi & Wangyunlai on 2021/5/13.
 //
 
+#include <cstddef>
 #include <string.h>
+#include <string>
 
 #include "common/defs.h"
 #include "common/lang/string.h"
 #include "common/log/log.h"
+#include "sql/parser/value.h"
 #include "storage/buffer/disk_buffer_pool.h"
 #include "storage/common/condition_filter.h"
 #include "storage/common/meta_util.h"
@@ -26,6 +29,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include "storage/table/table_meta.h"
 #include "storage/trx/trx.h"
+#include "common/lang/defer.h"
 
 Table::~Table()
 {
@@ -469,6 +473,54 @@ RC Table::delete_record(const Record &record)
   }
   rc = record_handler_->delete_record(&record.rid());
   return rc;
+}
+
+//更新单个字段
+RC Table::update_record(Record &record, const char *attr_name, Value *value)
+{
+  std::vector<std::string> attr_names;
+  attr_names.emplace_back(attr_name);
+  std::vector<Value*> values;
+  values.emplace_back(value);
+  
+}
+
+RC Table::update_record(Record &record, std::vector<std::string> &attr_names, std::vector<Value*> &values)
+{
+  RC rc = RC::SUCCESS;
+  if (attr_names.size() != values.size() || attr_names.size() == 0) {
+    rc = RC::INVALID_ARGUMENT;
+    return rc;
+  }
+  const int sys_field_num  = table_meta_.sys_field_num();
+  const int user_field_num = table_meta_.field_num() - sys_field_num;
+  int field_length = -1, field_offset = -1, field_index = -1;
+  char *old_data = record.data();
+  char *new_data = new char[table_meta_.record_size()];
+  DEFER([&](){
+    delete [] new_data;
+    new_data = nullptr;
+    record.set_data(old_data);
+  });
+  memcpy(new_data, old_data, table_meta_.record_size());
+  
+  for(size_t c_idx = 0; c_idx < attr_names.size(); ++c_idx) {
+    std::string &attr_name = attr_names[c_idx];
+    Value *value = values[c_idx];
+    //找到要更新的列，判断是否匹配
+    for(int i = 0; i < user_field_num; ++i) {
+      const FieldMeta *field_meta = table_meta_.field(i + sys_field_num);
+      const char *field_name = field_meta->name();
+      if(strcmp(field_name, attr_name.c_str()) != 0) {
+        continue;
+      }
+      AttrType attr_type = field_meta->type();
+      AttrType value_type = value->attr_type();
+      if(value->is_null() )
+    }
+
+  }
+
 }
 
 RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
