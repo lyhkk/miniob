@@ -557,7 +557,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
     }
     return rc;
   }
-  free(data);
+  delete[] data;
   return rc;
 }
 
