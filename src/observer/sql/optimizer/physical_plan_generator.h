@@ -10,6 +10,7 @@ See the Mulan PSL v2 for more details. */
 
 //
 // Created by Wangyunlai on 2022/12/14.
+// Modified by Chen Jiuhe on 2024/04/12.
 //
 
 #pragma once
@@ -17,6 +18,8 @@ See the Mulan PSL v2 for more details. */
 #include "common/rc.h"
 #include "sql/operator/logical_operator.h"
 #include "sql/operator/physical_operator.h"
+#include "sql/operator/update_logical_operator.h"
+#include <memory>
 
 class TableGetLogicalOperator;
 class PredicateLogicalOperator;
@@ -26,6 +29,7 @@ class DeleteLogicalOperator;
 class ExplainLogicalOperator;
 class JoinLogicalOperator;
 class CalcLogicalOperator;
+class UpdateLogicalOperator;
 
 /**
  * @brief 物理计划生成器
@@ -50,4 +54,5 @@ private:
   RC create_plan(ExplainLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper);
   RC create_plan(JoinLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper);
   RC create_plan(CalcLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper);
+  RC create_plan(UpdateLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper);
 };

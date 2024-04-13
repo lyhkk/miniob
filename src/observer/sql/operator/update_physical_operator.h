@@ -4,35 +4,37 @@
 
 #pragma once
 
+#include "sql/operator/physical_operator.h"
+#include "sql/parser/parse.h"
 #include <vector>
-#include "sql/operator/logical_operator.h"
-#include "sql/parser/parse_defs.h"
-#include "sql/parser/value.h"
-#include "storage/field/field.h"
+
+class Trx;
+class UpdateStmt;
 
 /**
- * @brief 更新逻辑算子
- * @ingroup LogicalOperator
+ * @brief 更新物理算子
+ * @ingroup PhysicalOperator
  */
-class UpdateLogicalOperator : public LogicalOperator
+class UpdatePhysicalOperator : public PhysicalOperator
 {
 public:
-  UpdateLogicalOperator(Table *table, std::vector<Value> &values,std::vector<FieldMeta> & fields);
-  virtual ~UpdateLogicalOperator() = default;
+  UpdatePhysicalOperator(Table *table,std::vector<Value> & values,std::vector<FieldMeta> & fields) : table_(table)
+  ,values_(values),fields_(fields)
+  {}
 
-  LogicalOperatorType type() const override
-  {
-    return LogicalOperatorType::UPDATE;
-  }
+  virtual ~UpdatePhysicalOperator() = default;
 
-  Table *table() const { return table_; }
-  const std::vector<Value> &values() const { return values_; }
-  std::vector<Value> &values() { return values_; }
-  const std::vector<FieldMeta> &fields() const { return fields_; }
-  std::vector<FieldMeta> &fields() { return fields_; }
+  PhysicalOperatorType type() const override { return PhysicalOperatorType::UPDATE; }
+
+  RC open(Trx *trx) override;
+  RC next() override;
+  RC close() override;
+
+  Tuple *current_tuple() override { return nullptr; }
 
 private:
   Table *table_ = nullptr;
+  Trx *trx_ = nullptr;
   std::vector<Value> values_;
   std::vector<FieldMeta> fields_;
 };

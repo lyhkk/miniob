@@ -19,11 +19,11 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include <utility>
 
-#define VALUE_NUM 1
-
-UpdateStmt::UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<std::unique_ptr<Expression>>&& values, FilterStmt *filter_stmt)
-             :table_(table), fields_(std::move(fields)), values_(values), filter_stmt_(filter_stmt)
-{}
+UpdateStmt::UpdateStmt(Table *table, Value *values, int value_amount,FieldMeta field,FilterStmt * filter_stmt)
+    : table_(table), values_(values), value_amount_(value_amount),filter_stmt_(filter_stmt)
+{
+  fields_.push_back(field);
+}
 
 UpdateStmt::~UpdateStmt()
 {
@@ -48,73 +48,38 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  //check attribute amount and value amount
-  if (update.attribute_name.size() != update.value.size()) {
-    LOG_WARN("invalid argument, column size not equal value size");
-    return RC::INVALID_ARGUMENT;
-  }
-  std::vector<std::unique_ptr<Expression>> values;
-  std::vector<FieldMeta> fields;
   const TableMeta &table_meta = table->table_meta();
-  for (size_t i = 0; i < update.attribute_name.size(); i++) {
-    const FieldMeta* update_field = table_meta.field(update.attribute_name[i].c_str());
-    bool valid = false;
-    if (nullptr != update_field) {
-      if (update.value[i]->type() == ExprType::VALUE) {
-        const Value& val = static_cast<ValueExpr*>(update.value[i])->get_value();
-        if (update_field->type() == val.attr_type() || (val.is_null() && update_field->nullable())) {
-          if (update_field->type() == CHARS && update_field->len() < val.length()) {
-            LOG_WARN("update chars with longer length");
-          } else {
-            valid = true;
-          }
-          // 将不确定长度的 char 改为固定长度的 char
-          if (valid && CHARS == update_field->type()) {
-            char *char_value = (char*)malloc(update_field->len());
-            memset(char_value, 0, update_field->len());
-            memcpy(char_value, val.data(), val.length());
-            const_cast<Value&>(val).set_data(char_value, update_field->len());
-            free(char_value);
-          }
-        } else if (TEXTS == update_field->type() && CHARS == val.attr_type()) {
-          if (MAX_TEXT_LENGTH < val.length()) {
-            LOG_WARN("Text length:%d, over max_length 65535", val.length());
-            return RC::INVALID_ARGUMENT;
-          }
-          valid = true;
-        } else if (const_cast<Value&>(val).typecast(update_field->type()) != RC::SUCCESS) {
-          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-            table->name(), update_field->name(), update_field->type(), val.attr_type());
-          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-        } else {
-          valid = true;
-        }
-      } else {
-        if (RC rc = update.values[i]->traverse_check(check_field); RC::SUCCESS != rc) {
-          return rc;
-        }
-        valid = true; // 其他类型的表达式先暂时认为有效
+  const std::vector<FieldMeta>* fieldMeta = table_meta.field_metas();
+  bool valid = false;
+  FieldMeta update_field;
+  for (FieldMeta field :*fieldMeta) {
+    if( 0 == strcmp(field.name(),update.attribute_name.c_str()))
+    {
+      if(field.type() == update.value.attr_type())
+      {
+        valid = true;
+        update_field = field;
+        break;
       }
     }
-    if (!valid) {
-      LOG_WARN("update field type mismatch. table=%s", table_name);
-      return RC::INVALID_ARGUMENT;
-    }
-    fields.emplace_back(*update_field);
-    values.emplace_back(update.values[i]);
   }
-  update.values.clear();
+  if(!valid)
+  {
+    LOG_WARN("update field type mismatch. table=%s",table_name);
+    return RC::INVALID_ARGUMENT;
+  }
 
   std::unordered_map<std::string, Table *> table_map;
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
   FilterStmt *filter_stmt = nullptr;
   RC rc = FilterStmt::create(
-      db, table, &table_map, update.conditions, filter_stmt);
+      db, table, &table_map, update.conditions.data(), static_cast<int>(update.conditions.size()), filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
+  UpdateSqlNode  update_sql_node = const_cast<UpdateSqlNode&>(update);
   // everything alright
-  stmt = new UpdateStmt(table, std::move(fields), std::move(values), filter_stmt);
+  stmt = new UpdateStmt(table, &(update_sql_node.value), 1, update_field,filter_stmt);
   return RC::SUCCESS;
 }

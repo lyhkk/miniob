@@ -478,49 +478,87 @@ RC Table::delete_record(const Record &record)
 //更新单个字段
 RC Table::update_record(Record &record, const char *attr_name, Value *value)
 {
-  std::vector<std::string> attr_names;
-  attr_names.emplace_back(attr_name);
-  std::vector<Value*> values;
-  values.emplace_back(value);
-  
-}
-
-RC Table::update_record(Record &record, std::vector<std::string> &attr_names, std::vector<Value*> &values)
-{
   RC rc = RC::SUCCESS;
-  if (attr_names.size() != values.size() || attr_names.size() == 0) {
-    rc = RC::INVALID_ARGUMENT;
-    return rc;
-  }
-  const int sys_field_num  = table_meta_.sys_field_num();
+
+  int field_offset = -1;
+  int field_length = -1;
+  bool is_index = false;//标识当前列上是否有索引
+  const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
-  int field_length = -1, field_offset = -1, field_index = -1;
-  char *old_data = record.data();
-  char *new_data = new char[table_meta_.record_size()];
-  DEFER([&](){
-    delete [] new_data;
-    new_data = nullptr;
-    record.set_data(old_data);
-  });
-  memcpy(new_data, old_data, table_meta_.record_size());
-  
-  for(size_t c_idx = 0; c_idx < attr_names.size(); ++c_idx) {
-    std::string &attr_name = attr_names[c_idx];
-    Value *value = values[c_idx];
-    //找到要更新的列，判断是否匹配
-    for(int i = 0; i < user_field_num; ++i) {
-      const FieldMeta *field_meta = table_meta_.field(i + sys_field_num);
-      const char *field_name = field_meta->name();
-      if(strcmp(field_name, attr_name.c_str()) != 0) {
-        continue;
-      }
-      AttrType attr_type = field_meta->type();
-      AttrType value_type = value->attr_type();
-      if(value->is_null() )
+  for(int i = 0 ; i < user_field_num ; ++i) {
+    const FieldMeta *field_meta = table_meta_.field( i + sys_field_num);
+    const char * field_name = field_meta -> name();
+    if( 0 != strcmp(field_name,attr_name)) {
+      continue;
+    }
+    AttrType attr_type= field_meta->type();
+    AttrType value_type = value->attr_type();
+    if(attr_type != value_type) {
+      LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+          name(),
+          field_meta->name(),
+          attr_type,
+          value_type);
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
     }
 
+    field_offset = field_meta->offset();
+    field_length = field_meta->len();
+    if (nullptr != find_index_by_field(field_name)) {
+      is_index = true;
+    }
+    break;
   }
 
+  if(field_length < 0 || field_offset < 0) {
+    LOG_WARN("field not find ,field name = %s",attr_name);
+      return RC::SCHEMA_FIELD_NOT_EXIST;
+  }
+
+  //判断新值与旧值是否相等
+  if( 0 == memcmp(record.data()+field_offset,value->data(),field_length))
+  {
+    LOG_WARN("update old value equals new value");
+    return RC::RECORD_DUPLICATE_KEY;
+  }
+
+  //写入新的值
+  char *old_data = record.data();//old_data不能释放，其指向的是frame中的内存
+  char *data = new char[table_meta_.record_size()];
+  memcpy(data, old_data, table_meta_.record_size());
+  memcpy(data + field_offset, value->data(), field_length);
+  record.set_data(data);
+  if(is_index)
+  {
+    rc = insert_entry_of_indexes(record.data(), record.rid());
+    if (rc != RC::SUCCESS) { // 可能出现了键值重复
+      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+                  name(), rc2, strrc(rc2));
+      }
+      return rc;
+    }
+  }
+  record_handler_->update_record(&record);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
+    return rc;
+  }
+
+  if (is_index) {
+    rc = delete_entry_of_indexes(old_data, record.rid(), false);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+          record.rid().page_num,
+          record.rid().slot_num,
+          rc,
+          strrc(rc));
+    }
+    return rc;
+  }
+  free(data);
+  return rc;
 }
 
 RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
