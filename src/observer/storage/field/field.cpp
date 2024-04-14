@@ -92,12 +92,13 @@ const char* Field::function_alias(const char *table_name, const char *field_name
   return alias;
 }
 
-void Field::function_data(Value &cell) const
+void Field::function_data(Value &cell)
 {
   if (is_length_func_ == 1) {
     std::string temp = cell.get_string();
     cell.set_int(temp.size());
     cell.flag_for_func_.is_length_func_ = 1;
+    is_length_func_ = 0;
   } 
   else if (is_round_func_ == 1) {
     float value = cell.get_float();
@@ -107,6 +108,7 @@ void Field::function_data(Value &cell) const
     }
     cell.set_int(temp);
     cell.flag_for_func_.is_round_func_ = 1;
+    is_round_func_ = 0;
   }
   else if (date_format_ != "") {
     std::string date_format = date_format_;
@@ -116,13 +118,14 @@ void Field::function_data(Value &cell) const
     tm tm = {};
     char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
     if (formatted_date == NULL) {
-      LOG_ERROR("Failed to parse date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+      LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
     }
     else {
       char buffer[80];
       strftime(buffer, 80, date_format.c_str(), &tm);
       cell.set_string(buffer);
       cell.flag_for_func_.is_date_format_func_ = 1;
+      date_format_ = "";
     }
   }
   else {

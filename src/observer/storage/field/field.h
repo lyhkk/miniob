@@ -50,7 +50,7 @@ public:
   RC          check_function_type(const RelAttrSqlNode rel_attr_sql_node); // 检验这个字段是否是可以进行对应函数运算的type eg: LENGTH(type), type = AttrType::CHARS
   AttrType    get_function_type() const; // 获取函数运算的type eg: LENGTH(type), 返回AttrType::INTS
   const char* function_alias(const char *table_name, const char *field_name) const;
-  void        function_data(Value &cell) const;
+  void        function_data(Value &cell);
 
 
   void set_int(Record &record, int value);

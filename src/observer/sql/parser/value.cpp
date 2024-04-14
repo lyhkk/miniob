@@ -151,7 +151,7 @@ void Value::set_date(int val)
 {
   attr_type_            = DATES;
   num_value_.int_value_ = val;
-  length_               = sizeof(val); // xxxx-xx-xx
+  length_               = sizeof(val);
 }
 
 void Value::set_value(const Value &value)
