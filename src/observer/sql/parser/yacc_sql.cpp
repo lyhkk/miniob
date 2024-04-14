@@ -2349,7 +2349,7 @@ yyreduce:
 
   case 78: /* func_for_imm: func_for_imm ID  */
 #line 625 "yacc_sql.y"
-                     {
+                      {
       (yyval.rel_attr) = (yyvsp[-1].rel_attr);
       (yyval.rel_attr)->alias_name = (yyvsp[0].string);
       free((yyvsp[0].string));

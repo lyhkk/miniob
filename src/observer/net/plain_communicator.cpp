@@ -225,7 +225,14 @@ RC PlainCommunicator::write_function_value(const SQLStageEvent *sql_event, bool 
       return rc;
     }
   }
-
+  if (!need_disconnect) {
+    RC rc = writer_->writen(send_message_delimiter_.data(), send_message_delimiter_.size());
+    if (OB_FAIL(rc)) {
+      LOG_ERROR("Failed to send data back to client. ret=%s, error=%s", strrc(rc), strerror(errno));
+      need_disconnect = true;
+      return rc;
+    }
+  }
   writer_->flush();
   return RC::SUCCESS;
 }
