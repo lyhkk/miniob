@@ -37,9 +37,11 @@ struct RelAttrSqlNode
 {
   std::string relation_name;   ///< relation name (may be NULL) 表名
   std::string attribute_name;  ///< attribute name              属性名
-  int is_length_func;         ///< 是否是长度函数
-  int is_round_func;          ///< 是否是round函数
+  int is_length_func;          ///< 是否是长度函数
+  int is_round_func;           ///< 是否是round函数
   std::string date_format;     ///< 是否是date_format函数
+  std::string function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
+  std::string alias_name;      ///< 别名
 
   AttrType get_func_attr_type(AttrType type) const { // function功能，需要修改type
     if (is_length_func == 1) {

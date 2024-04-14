@@ -73,6 +73,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         LENGTH
         ROUND
         DATE_FORMAT
+        AS
         LBRACE
         RBRACE
         COMMA
@@ -138,14 +139,17 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <number>              number
 %type <comp>                comp_op
 %type <rel_attr>            rel_attr
+%type <rel_attr>            func_for_imm
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
 %type <rel_attr_list>       select_attr
+%type <rel_attr_list>       select_func_imm_attr
 %type <relation_list>       rel_list
 %type <rel_attr_list>       attr_list
+%type <rel_attr_list>       func_imm_list
 %type <expression>          expression
 %type <expression_list>     expression_list
 %type <sql_node>            calc_stmt
@@ -452,6 +456,12 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
       free($4);
     }
+    | SELECT select_func_imm_attr
+    {
+      $$ = new ParsedSqlNode(SCF_SELECT);
+      $$->selection.attributes.swap(*$2);
+      delete $2;
+    }
     ;
 calc_stmt:
     CALC expression_list
@@ -551,6 +561,99 @@ rel_attr:
       $$ = $3;
       $$->date_format.assign(date_format);
       free(date_format);
+    }
+    | rel_attr AS ID {
+      $$ = $1;
+      $$->alias_name = $3;
+      free($3);
+    }
+    | rel_attr ID {
+      $$ = $1;
+      $$->alias_name = $2;
+      free($2);
+    }
+    ;
+
+func_for_imm:
+    LENGTH LBRACE SSS RBRACE {
+      $$ = new RelAttrSqlNode;
+      char *tmp = common::substr($3, 1, strlen($3) - 2);
+
+      // 字符串长度，得到需要输出的别名和值
+      Value len_val = Value(tmp);
+      len_val.flag_for_func_.is_length_func_ = 1;
+      $$->function_value = len_val.function_data();
+      $$->is_length_func = 1;
+      $$->alias_name = "LENGTH(" + string(tmp) + ")";
+
+      free(tmp);
+      free($3);
+    }
+    | ROUND LBRACE FLOAT RBRACE {
+      $$ = new RelAttrSqlNode;
+
+      // 四舍五入，得到需要输出的别名和值
+      Value round_val = Value((float)$3);
+      round_val.flag_for_func_.is_round_func_ = 1;
+      $$->function_value = round_val.function_data();
+      $$->is_round_func = 1;
+      $$->alias_name = "ROUND(" + std::to_string($3) + ")";
+    }
+    | DATE_FORMAT LBRACE DATE_STR COMMA SSS RBRACE {
+      char *date_format = common::substr($5, 1, strlen($5) - 2);
+      char *date_str = common::substr($3, 1, strlen($3) - 2);
+      $$ = new RelAttrSqlNode;
+
+      // 日期格式化，得到需要输出的别名和值
+      Value format_date_val = Value(date_str);
+      format_date_val.flag_for_func_.is_date_format_func_ = 1;
+      $$->function_value = format_date_val.function_data(date_format);
+      $$->date_format.assign(date_format);
+      $$->alias_name = "DATE_FORMAT(" + string(date_str) + ", " + string(date_format) + ")";
+
+      // 释放内存
+      free(date_format);
+      free(date_str);
+      free($3);
+      free($5);
+    }
+    | func_for_imm AS ID {
+      $$ = $1;
+      $$->alias_name = $3;
+      free($3);
+    }
+    | func_for_imm ID {
+      $$ = $1;
+      $$->alias_name = $2;
+      free($2);
+    }
+    ;
+
+func_imm_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA func_for_imm func_imm_list {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<RelAttrSqlNode>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
+    }
+    ;
+
+select_func_imm_attr:
+    func_for_imm func_imm_list {
+      if ($2 != nullptr) {
+        $$ = $2;
+      } else {
+        $$ = new std::vector<RelAttrSqlNode>;
+      }
+      $$->emplace_back(*$1);
+      delete $1;
     }
     ;
 

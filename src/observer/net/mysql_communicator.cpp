@@ -790,6 +790,10 @@ RC MysqlCommunicator::write_result(SessionEvent *event, bool &need_disconnect)
   return rc;
 }
 
+RC MysqlCommunicator::write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) {
+  return RC::UNIMPLENMENT;
+}
+
 RC MysqlCommunicator::send_packet(const BasePacket &packet)
 {
   std::vector<char> net_packet;

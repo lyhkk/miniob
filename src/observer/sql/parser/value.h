@@ -65,6 +65,7 @@ public:
   void invalid_date();
 
   std::string to_string() const;
+  std::string function_data(const char *date_format = nullptr); // 只用于function题目中，不查表只计算的情况下，返回数据
 
   int compare(const Value &other) const;
   int like_type_compare(const Value &other) const;

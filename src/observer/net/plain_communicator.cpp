@@ -159,6 +159,77 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
   return RC::SUCCESS;
 }
 
+RC PlainCommunicator::write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect)
+{
+  // bool need_disconnect = false;
+  if (sql_event->sql_node()->flag != SCF_SELECT) {
+    LOG_ERROR("Function part: Wrong statement call. statement_flag=%d", sql_event->sql_node()->flag);
+    return RC::INVALID_ARGUMENT; // 理论不可能出现这种情况
+  }
+  int cell_num = sql_event->sql_node()->selection.attributes.size();
+  for (int i = 0; i < cell_num; i++) {
+    auto &attr = sql_event->sql_node()->selection.attributes[cell_num - i - 1];
+    // assemble the alias_name and delimiter in the first line and send it to the client
+    if (attr.alias_name != "") {
+      RC rc = writer_->writen(attr.alias_name.c_str(), strlen(attr.alias_name.c_str()));
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+        return rc;
+      }
+    }
+    if (i != cell_num - 1) {
+      RC rc = writer_->writen(" | ", 3);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+        return rc;
+      }
+    }
+  }
+
+  if (cell_num > 0) {
+    char newline = '\n';
+
+    RC rc = writer_->writen(&newline, 1);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+      return rc;
+    }
+  }
+
+  // send the function value to the client
+  for (int i = 0; i < cell_num; i++) {
+    auto &attr = sql_event->sql_node()->selection.attributes[cell_num - i - 1];
+    if (attr.alias_name != "") {
+      std::string value = attr.function_value;
+      RC rc = writer_->writen(value.c_str(), strlen(value.c_str()));
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+        return rc;
+      }
+    }
+    if (i != cell_num - 1) {
+      RC rc = writer_->writen(" | ", 3);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+        return rc;
+      }
+    }
+  }
+
+  if (cell_num > 0) {
+    char newline = '\n';
+
+    RC rc = writer_->writen(&newline, 1);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+      return rc;
+    }
+  }
+
+  writer_->flush();
+  return RC::SUCCESS;
+}
+
 RC PlainCommunicator::write_result(SessionEvent *event, bool &need_disconnect) // Return SUCCESS / FAILURE 
 {
   RC rc = write_result_internal(event, need_disconnect);
@@ -308,19 +379,3 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
 
   return rc;
 }
-
-// void PlainCommunicator::reset_value_after_function_call(Value &value) {
-//   if (value.flag_for_func_.is_date_format_func_ == 1) {
-//     value.flag_for_func_.is_date_format_func_ = 0;
-//     value.set_type(AttrType::DATES);
-//   }
-//   else if (value.flag_for_func_.is_length_func_ == 1) {
-//     value.flag_for_func_.is_length_func_ = 0;
-//     value.set_type(AttrType::CHARS);
-//   }
-//   else if (value.flag_for_func_.is_round_func_ == 1) {
-//     value.flag_for_func_.is_round_func_ = 0;
-//     value.set_type(AttrType::FLOATS);
-//   }
-//   return;
-// }

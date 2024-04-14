@@ -86,5 +86,13 @@ RC ParseStage::handle_request(SQLStageEvent *sql_event)
 
   sql_event->set_sql_node(std::move(sql_node));
 
+  // 检查是否是 select function(immediate value)
+  // 只考虑全部query_field都是直接计算结果的function
+  if (sql_event->sql_node()->flag == SCF_SELECT) {
+    auto &attr = sql_event->sql_node()->selection.attributes[0]; 
+    if (attr.function_value != "") {
+      return RC::SELECT_FOR_COMPUTE;
+    }
+  }
   return RC::SUCCESS;
 }

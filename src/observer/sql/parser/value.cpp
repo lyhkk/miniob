@@ -41,7 +41,7 @@ AttrType attr_type_from_string(const char *s)
 
 Value::Value(int val) { set_int(val);}
 
-Value::Value(float val) { set_float(val); flag_for_func_.is_round_func_ = 0;}
+Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
 
@@ -50,7 +50,6 @@ Value::Value(const char *s, int len /*= 0*/) {
   char *p = (char *)s;
   std::regex pattern("\\d+-\\d+-\\d+");
   if( std::regex_match(p, pattern) ) {
-    flag_for_func_.is_date_format_func_ = 0;
     sscanf(p, "%d-%d-%d", &y, &m, &d);
     if (!check_date(y, m, d)) {
       invalid_date();
@@ -58,7 +57,6 @@ Value::Value(const char *s, int len /*= 0*/) {
     }
     set_date(10000 * y + 100 * m + d);
   } else {
-    flag_for_func_.is_length_func_ = 0;
     set_string(s, len);
   } 
 }
@@ -387,4 +385,42 @@ bool Value::get_boolean() const
     }
   }
   return false;
+}
+
+std::string Value::function_data(const char *date_format) {
+  if (flag_for_func_.is_length_func_ == 1) {
+    std::string temp = get_string();
+    set_int(temp.size());
+    flag_for_func_.is_length_func_ = 0;
+    return to_string();
+  } 
+  else if (flag_for_func_.is_round_func_ == 1) {
+    float value = get_float();
+    int temp = (int)value;
+    if (value - (int)value >= 0.5) {
+      temp = temp + 1;
+    }
+    set_int(temp);
+    flag_for_func_.is_round_func_ = 0;
+    return to_string();
+  } 
+  else if (flag_for_func_.is_date_format_func_ == 1) {
+    std::string date_format_ = date_format;
+    int date = get_int();
+    std::string date_str = std::to_string(date);
+    std::stringstream ss(date_str);
+    tm tm = {};
+    char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
+    if (formatted_date == NULL) {
+      LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+    }
+    else {
+      char buffer[80];
+      strftime(buffer, 80, date_format_.c_str(), &tm);
+      set_string(buffer);
+      flag_for_func_.is_date_format_func_ = 0;
+      return to_string();
+    }
+  } 
+  return "";
 }
