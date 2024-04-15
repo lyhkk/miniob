@@ -103,7 +103,8 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     int is_length_func = condition.left_attr.is_length_func;
     int is_round_func  = condition.left_attr.is_round_func;
     std::string date_format = condition.left_attr.date_format;
-    Field field_obj = Field(table, field, is_length_func, is_round_func, date_format);
+    int round_num = condition.left_attr.round_num;
+    Field field_obj = Field(table, field, is_length_func, is_round_func, round_num, date_format);
     RC rc = field_obj.check_function_type(condition.left_attr);
     if (rc != RC::SUCCESS) {
       return rc;
@@ -128,7 +129,8 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     int is_length_func = condition.right_attr.is_length_func;
     int is_round_func  = condition.right_attr.is_round_func;
     std::string date_format = condition.right_attr.date_format;
-    Field field_obj = Field(table, field, is_length_func, is_round_func, date_format);
+    int round_num = condition.right_attr.round_num;
+    Field field_obj = Field(table, field, is_length_func, is_round_func, round_num, date_format);
     RC rc = field_obj.check_function_type(condition.right_attr);
     if (rc != RC::SUCCESS) {
       return rc;

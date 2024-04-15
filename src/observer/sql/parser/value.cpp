@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include <iostream>
 #include <sstream>
 #include <regex>
+#include <cmath>
 
 const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates","ints", "floats", "booleans"};
 
@@ -388,23 +389,28 @@ bool Value::get_boolean() const
 }
 
 std::string Value::function_data(const char *date_format) {
-  if (flag_for_func_.is_length_func_ == 1) {
+  if (is_length_func_ == 1) {
     std::string temp = get_string();
     set_int(temp.size());
-    flag_for_func_.is_length_func_ = 0;
+    is_length_func_ = 0;
     return to_string();
   } 
-  else if (flag_for_func_.is_round_func_ == 1) {
+  else if (is_round_func_ == 1) {
     float value = get_float();
-    int temp = (int)value;
-    if (value - (int)value >= 0.5) {
-      temp = temp + 1;
+    // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
+    float temp = value * std::pow(10, round_num_);
+    temp = std::round(temp);
+    temp = temp / std::pow(10, round_num_);
+    if (round_num_ <= 0) {
+      set_int(temp);
     }
-    set_int(temp);
-    flag_for_func_.is_round_func_ = 0;
+    else {
+      set_float(temp);
+    }
+    is_round_func_ = 0;
     return to_string();
   } 
-  else if (flag_for_func_.is_date_format_func_ == 1) {
+  else if (is_date_format_func_ == 1) {
     std::string date_format_ = date_format;
     int date = get_int();
     std::string date_str = std::to_string(date);
@@ -418,7 +424,7 @@ std::string Value::function_data(const char *date_format) {
       char buffer[80];
       strftime(buffer, 80, date_format_.c_str(), &tm);
       set_string(buffer);
-      flag_for_func_.is_date_format_func_ = 0;
+      is_date_format_func_ = 0;
       return to_string();
     }
   } 

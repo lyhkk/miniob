@@ -25,11 +25,12 @@ class Field
 {
 public:
   Field() = default;
-  Field(const Table *table, const FieldMeta *field, int is_length_func = 0, int is_round_func = 0, std::string date_format = "") {
+  Field(const Table *table, const FieldMeta *field, int is_length_func = 0, int is_round_func = 0, int round_num = 0, std::string date_format = "") {
     this->table_ = table;
     this->field_ = field;
     this->is_length_func_ = is_length_func;
     this->is_round_func_ = is_round_func;
+    this->round_num_ = round_num;
     this->date_format_ = date_format;
   }
   Field(const Field &) = default;
@@ -61,6 +62,7 @@ public:
 public:
   int      is_length_func_;
   int      is_round_func_;
+  int      round_num_;
   std::string    date_format_;
 
 private:

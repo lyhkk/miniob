@@ -52,11 +52,11 @@ class TupleSchema
 {
 public:
   void append_cell(const TupleCellSpec &cell) { cells_.push_back(cell); }
-  void append_cell(const char *table, const char *field, int is_length_func, int is_round_func, const char *date_format) { 
-    append_cell(TupleCellSpec(table, field, nullptr, is_length_func, is_round_func, date_format)); 
+  void append_cell(const char *table, const char *field, int is_length_func, int is_round_func, int round_num, const char *date_format) { 
+    append_cell(TupleCellSpec(table, field, nullptr, is_length_func, is_round_func, round_num, date_format)); 
   }
-  void append_cell(const char *alias, int is_length_func, int is_round_func, const char* date_format) {
-    append_cell(TupleCellSpec(alias, is_length_func, is_round_func, date_format)); 
+  void append_cell(const char *alias, int is_length_func, int is_round_func, int round_num, const char* date_format) {
+    append_cell(TupleCellSpec(alias, is_length_func, is_round_func, round_num, date_format)); 
   }
   int  cell_num() const { return static_cast<int>(cells_.size()); }
 
@@ -181,6 +181,7 @@ public:
       Field            field      = field_expr->field();
       field_expr->field().is_length_func_ = spec.is_length_func_;
       field_expr->field().is_round_func_ = spec.is_round_func_;
+      field_expr->field().round_num_ = spec.round_num_;
       field_expr->field().date_format_ = spec.date_format_;
       if (0 == strcmp(field_name, field.field_name())) {
         return cell_at(i, cell);

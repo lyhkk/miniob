@@ -555,6 +555,12 @@ rel_attr:
     | ROUND LBRACE rel_attr RBRACE {
       $$ = $3;
       $$->is_round_func = 1;
+      $$->round_num = 0;
+    }
+    | ROUND LBRACE rel_attr COMMA NUMBER RBRACE{
+      $$ = $3;
+      $$->is_round_func = 1;
+      $$->round_num = $5;
     }
     | DATE_FORMAT LBRACE rel_attr COMMA SSS RBRACE {
       char *date_format = common::substr($5, 1, strlen($5) - 2);
@@ -581,7 +587,7 @@ func_for_imm:
 
       // 字符串长度，得到需要输出的别名和值
       Value len_val = Value(tmp);
-      len_val.flag_for_func_.is_length_func_ = 1;
+      len_val.is_length_func_ = 1;
       $$->function_value = len_val.function_data();
       $$->is_length_func = 1;
       $$->alias_name = "LENGTH(" + string(tmp) + ")";
@@ -594,10 +600,23 @@ func_for_imm:
 
       // 四舍五入，得到需要输出的别名和值
       Value round_val = Value((float)$3);
-      round_val.flag_for_func_.is_round_func_ = 1;
+      round_val.is_round_func_ = 1;
+      round_val.round_num_ = 0;
       $$->function_value = round_val.function_data();
       $$->is_round_func = 1;
       $$->alias_name = "ROUND(" + std::to_string($3) + ")";
+    }
+    | ROUND LBRACE FLOAT COMMA NUMBER RBRACE {
+      $$ = new RelAttrSqlNode;
+
+      // 四舍五入，得到需要输出的别名和值
+      Value round_val = Value((float)$3);
+      round_val.is_round_func_ = 1;
+      round_val.round_num_ = $5;
+      $$->function_value = round_val.function_data();
+      $$->is_round_func = 1;
+      $$->round_num = $5;
+      $$->alias_name = "ROUND(" + std::to_string($3) + ", " + std::to_string($5) + ")";
     }
     | DATE_FORMAT LBRACE DATE_STR COMMA SSS RBRACE {
       char *date_format = common::substr($5, 1, strlen($5) - 2);
@@ -606,7 +625,7 @@ func_for_imm:
 
       // 日期格式化，得到需要输出的别名和值
       Value format_date_val = Value(date_str);
-      format_date_val.flag_for_func_.is_date_format_func_ = 1;
+      format_date_val.is_date_format_func_ = 1;
       $$->function_value = format_date_val.function_data(date_format);
       $$->date_format.assign(date_format);
       $$->alias_name = "DATE_FORMAT(" + string(date_str) + ", " + string(date_format) + ")";

@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "sql/parser/value.h"
 #include "storage/record/record.h"
+#include <cmath>
 
 void Field::set_int(Record &record, int value)
 {
@@ -49,8 +50,11 @@ AttrType Field::get_function_type() const{
   if (is_length_func_ == 1) {
     return AttrType::INTS;
   }
-  else if (is_round_func_ == 1) {
+  else if (is_round_func_ == 1 && round_num_ <= 0) {
     return AttrType::INTS;
+  }
+  else if (is_round_func_ == 1 && round_num_ > 0) {
+    return AttrType::FLOATS;
   }
   else if (date_format_ != "") {
     return AttrType::CHARS;
@@ -97,18 +101,25 @@ void Field::function_data(Value &cell)
   if (is_length_func_ == 1) {
     std::string temp = cell.get_string();
     cell.set_int(temp.size());
-    cell.flag_for_func_.is_length_func_ = 1;
+    cell.is_length_func_ = 1;
     is_length_func_ = 0;
   } 
   else if (is_round_func_ == 1) {
     float value = cell.get_float();
-    int temp = (int)value;
-    if (value - (int)value >= 0.5) {
-      temp = temp + 1;
+    // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
+    float temp = value * std::pow(10, round_num_);
+    temp = std::round(temp);
+    temp = temp / std::pow(10, round_num_);
+    if (round_num_ <= 0) {
+      cell.set_int(temp);
     }
-    cell.set_int(temp);
-    cell.flag_for_func_.is_round_func_ = 1;
+    else {
+      cell.set_float(temp);
+    }
+    cell.is_round_func_ = 1;
+    cell.round_num_ = round_num_;
     is_round_func_ = 0;
+    round_num_ = 0;
   }
   else if (date_format_ != "") {
     std::string date_format = date_format_;
@@ -124,14 +135,15 @@ void Field::function_data(Value &cell)
       char buffer[80];
       strftime(buffer, 80, date_format.c_str(), &tm);
       cell.set_string(buffer);
-      cell.flag_for_func_.is_date_format_func_ = 1;
+      cell.is_date_format_func_ = 1;
       date_format_ = "";
     }
   }
   else {
-    cell.flag_for_func_.is_length_func_ = 0;
-    cell.flag_for_func_.is_round_func_ = 0;
-    cell.flag_for_func_.is_date_format_func_ = 0;
+    cell.is_length_func_ = 0;
+    cell.is_round_func_ = 0;
+    cell.round_num_ = 0;
+    cell.is_date_format_func_ = 0;
   }
 }
 

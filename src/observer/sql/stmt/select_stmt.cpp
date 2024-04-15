@@ -36,7 +36,8 @@ static void wildcard_fields(Table *table, std::vector<Field> &field_metas, RelAt
     int is_length_func = relation_attr.is_length_func;
     int is_round_func = relation_attr.is_round_func;
     std::string date_format = relation_attr.date_format;
-    field_metas.push_back(Field(table, table_meta.field(i), is_length_func, is_round_func, date_format));
+    int round_num = relation_attr.round_num;
+    field_metas.push_back(Field(table, table_meta.field(i), is_length_func, is_round_func, round_num, date_format));
   }
 }
 
@@ -107,7 +108,7 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
             LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
             return RC::SCHEMA_FIELD_MISSING;
           }
-          query_fields.push_back(Field(table, field_meta, relation_attr.is_length_func, relation_attr.is_round_func, relation_attr.date_format));
+          query_fields.push_back(Field(table, field_meta, relation_attr.is_length_func, relation_attr.is_round_func, relation_attr.round_num, relation_attr.date_format));
         }
       }
     } else {
@@ -123,12 +124,12 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
         return RC::SCHEMA_FIELD_MISSING;
       }
 
-      Field            field      = Field(table, field_meta, relation_attr.is_length_func, relation_attr.is_round_func, relation_attr.date_format);
+      Field            field      = Field(table, field_meta, relation_attr.is_length_func, relation_attr.is_round_func, relation_attr.round_num, relation_attr.date_format);
       RC rc = field.check_function_type(relation_attr);
       if (rc != RC::SUCCESS) {
         return rc;
       }
-      query_fields.push_back(Field(table, field_meta, relation_attr.is_length_func, relation_attr.is_round_func, relation_attr.date_format));
+      query_fields.push_back(Field(table, field_meta, relation_attr.is_length_func, relation_attr.is_round_func, relation_attr.round_num, relation_attr.date_format));
     }
   }
 

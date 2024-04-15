@@ -88,12 +88,11 @@ public:
 
 public:
   // 为了支持function功能下，置位value后，重新恢复内存中的value
-  union
-  {
-    int is_length_func_;
-    int is_round_func_;
-    int is_date_format_func_;
-  } flag_for_func_;
+  int is_length_func_;
+  int is_round_func_;
+  int round_num_;
+  int is_date_format_func_;
+
 
 private:
   AttrType attr_type_ = UNDEFINED;

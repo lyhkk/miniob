@@ -62,7 +62,8 @@ void ProjectPhysicalOperator::add_projection(const Field &field)
   const char *field_name = field.field_name();
   int is_length_func = field.is_length_func_;
   int is_round_func = field.is_round_func_;
+  int round_num = field.round_num_;
   std::string date_format = field.date_format_;
-  TupleCellSpec *spec = new TupleCellSpec(table_name, field_name, nullptr, is_length_func, is_round_func, date_format.c_str());
+  TupleCellSpec *spec = new TupleCellSpec(table_name, field_name, nullptr, is_length_func, is_round_func, round_num, date_format.c_str());
   tuple_.add_cell_spec(spec);
 }
