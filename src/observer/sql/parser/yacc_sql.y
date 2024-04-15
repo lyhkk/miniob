@@ -94,6 +94,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         DATA
         INFILE
         EXPLAIN
+        AS
         EQ
         LT
         GT
@@ -115,7 +116,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   std::vector<Value> *              value_list;
   std::vector<ConditionSqlNode> *   condition_list;
   std::vector<RelAttrSqlNode> *     rel_attr_list;
-  std::vector<std::string> *        relation_list;
+  std::vector<RelRelaSqlNode> *     relation_list;
   char *                            string;
   int                               number;
   float                             floats;
@@ -129,7 +130,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 //非终结符
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
-%type <number>              type
+%type <number>              type 
 %type <condition>           condition
 %type <value>               value
 %type <number>              number
@@ -143,6 +144,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <rel_attr_list>       select_attr
 %type <relation_list>       rel_list
 %type <rel_attr_list>       attr_list
+%type <string>              as_info 
 %type <expression>          expression
 %type <expression_list>     expression_list
 %type <sql_node>            calc_stmt
@@ -429,23 +431,28 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT select_attr FROM ID rel_list where
+    SELECT select_attr FROM ID as_info rel_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
         $$->selection.attributes.swap(*$2);
         delete $2;
       }
+      if ($6 != nullptr) {
+        $$->selection.relations.swap(*$6);
+        delete $6;
+      } 
+      RelRelaSqlNode RelaNode;
+      RelaNode.relation_name = $4;
       if ($5 != nullptr) {
-        $$->selection.relations.swap(*$5);
-        delete $5;
+        RelaNode.alias_name = $5;
       }
-      $$->selection.relations.push_back($4);
+      $$->selection.relations.emplace_back(RelaNode);
       std::reverse($$->selection.relations.begin(), $$->selection.relations.end());
 
-      if ($6 != nullptr) {
-        $$->selection.conditions.swap(*$6);
-        delete $6;
+      if ($7 != nullptr) {
+        $$->selection.conditions.swap(*$7);
+        delete $7;
       }
       free($4);
     }
@@ -523,15 +530,21 @@ select_attr:
     ;
 
 rel_attr:
-    ID {
+    ID as_info {
       $$ = new RelAttrSqlNode;
       $$->attribute_name = $1;
+      if ($2 != nullptr) {
+        $$->alias_name = $2;
+      }
       free($1);
     }
-    | ID DOT ID {
+    | ID DOT ID as_info {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
+      if ($4 != nullptr) {
+        $$->alias_name = $4;
+      }
       free($1);
       free($3);
     }
@@ -554,19 +567,36 @@ attr_list:
     }
     ;
 
+as_info:
+    {
+      $$ = nullptr;
+    }
+    | ID {
+      $$ = $1;
+    }
+    | AS ID {
+      $$ = $2;
+    }
+    ;
+
 rel_list:
     /* empty */
     {
       $$ = nullptr;
     }
-    | COMMA ID rel_list {
-      if ($3 != nullptr) {
-        $$ = $3;
+    | COMMA ID as_info rel_list {
+      if ($4 != nullptr) {
+        $$ = $4;
       } else {
-        $$ = new std::vector<std::string>;
+        $$ = new std::vector<RelRelaSqlNode>;
+      }
+      RelRelaSqlNode RelaNode;
+      RelaNode.relation_name = $2;
+      if ($3 != nullptr) {
+        RelaNode.alias_name = $3;
       }
 
-      $$->push_back($2);
+      $$->emplace_back(RelaNode);
       free($2);
     }
     ;
