@@ -18,8 +18,9 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include <iostream>
 #include <sstream>
+#include <regex>
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates","ints", "floats", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates", "ints", "floats", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -44,10 +45,14 @@ Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
 
-Value::Value(const char *s, int len /*= 0*/) {
-  int y, m, d;
-  char *p = (char *)s;
-  if( sscanf(p, "%d-%d-%d", &y, &m, &d) ) {
+Value::Value(const char *s, int len /*= 0*/)
+{
+  int        y, m, d;
+  char      *p = (char *)s;
+  std::regex pattern("\\d+-\\d+-\\d+");
+  if (std::regex_match(p, pattern)) {
+    sscanf(p, "%d-%d-%d", &y, &m, &d);
+    printf("y=%d, m=%d, d=%d\n", y, m, d);
     if (!check_date(y, m, d)) {
       invalid_date();
       return;
@@ -55,23 +60,21 @@ Value::Value(const char *s, int len /*= 0*/) {
     set_date(10000 * y + 100 * m + d);
   } else {
     set_string(s, len);
-  } 
+  }
 }
 
 void Value::invalid_date()
 {
-  attr_type_ = UNDEFINED;
+  attr_type_            = UNDEFINED;
   num_value_.int_value_ = -1;
-  length_ = -1;
+  length_               = -1;
 }
 
 bool Value::check_date(int y, int m, int d)
 {
-    static int mon[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    bool leap = (y%400==0 || (y%100 && y%4==0));
-    return y > 0
-        && (m > 0)&&(m <= 12)
-        && (d > 0)&&(d <= ((m==2 && leap)?1:0) + mon[m]);
+  static int mon[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  bool       leap  = (y % 400 == 0 || (y % 100 && y % 4 == 0));
+  return y > 0 && (m > 0) && (m <= 12) && (d > 0) && (d <= ((m == 2 && leap) ? 1 : 0) + mon[m]);
 }
 
 void Value::set_data(char *data, int length)
@@ -85,7 +88,7 @@ void Value::set_data(char *data, int length)
       length_               = length;
     } break;
     case DATES: {
-      int ymd = *(int*)data;
+      int ymd               = *(int *)data;
       num_value_.int_value_ = ymd;
       length_               = length;
     } break;
@@ -146,7 +149,7 @@ void Value::set_date(int val)
 {
   attr_type_            = DATES;
   num_value_.int_value_ = val;
-  length_               = sizeof(val); // xxxx-xx-xx
+  length_               = sizeof(val);  // xxxx-xx-xx
 }
 
 void Value::set_value(const Value &value)
@@ -199,11 +202,11 @@ std::string Value::to_string() const
       int y = num_value_.int_value_ / 10000;
       int m = (num_value_.int_value_ % 10000) / 100;
       int d = num_value_.int_value_ % 100;
-      if (m > 0 && m < 10) 
+      if (m > 0 && m < 10)
         os << y << "-0" << m << "-";
-      else 
+      else
         os << y << "-" << m << "-";
-      if (d > 0 && d < 10) 
+      if (d > 0 && d < 10)
         os << "0" << d;
       else
         os << d;
