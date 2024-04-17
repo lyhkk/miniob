@@ -15,7 +15,12 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "common/rc.h"
+#include "sql/stmt/filter_stmt.h"
 #include "sql/stmt/stmt.h"
+#include "storage/field/field.h"
+#include "storage/field/field_meta.h"
+#include <memory>
+#include <vector>
 
 class Table;
 
@@ -27,18 +32,23 @@ class UpdateStmt : public Stmt
 {
 public:
   UpdateStmt() = default;
-  UpdateStmt(Table *table, Value *values, int value_amount);
-
+  UpdateStmt(Table *table, const Value *values, int value_amount,FieldMeta field,FilterStmt *filter_stmt);
+  ~UpdateStmt() override;
+  StmtType type() const override { return StmtType::UPDATE; }
 public:
   static RC create(Db *db, const UpdateSqlNode &update_sql, Stmt *&stmt);
 
 public:
   Table *table() const { return table_; }
-  Value *values() const { return values_; }
-  int    value_amount() const { return value_amount_; }
+  const Value *values() const { return values_; }
+  int value_amount() const {return value_amount_; }
+  std::vector<FieldMeta> *fields() {return &fields_; }
+  FilterStmt *filter_stmt() {return filter_stmt_; }
 
 private:
-  Table *table_        = nullptr;
-  Value *values_       = nullptr;
-  int    value_amount_ = 0;
+  Table *table_ = nullptr;
+  std::vector<FieldMeta> fields_; //需要更新的列
+  const Value *values_ = nullptr; //更新的值
+  int value_amount_ = 0;
+  FilterStmt *filter_stmt_ = nullptr; //条件
 };
