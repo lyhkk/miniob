@@ -47,17 +47,10 @@ RC Field::check_function_type(const RelAttrSqlNode rel_attr_sql_node) {
 }
 
 RC Field::check_aggregate_func_type(const RelAttrSqlNode rel_attr_sql_node) {
-  if (rel_attr_sql_node.aggregate_type == AggregateType::NONE || rel_attr_sql_node.aggregate_type == AggregateType::COUNT) {
-    return RC::SUCCESS;
-  }
-  else if (field_->type() == AttrType::CHARS && rel_attr_sql_node.aggregate_type == AggregateType::MIN) {
-    return RC::SUCCESS;
-  }
-  else if (field_->type() == AttrType::CHARS && rel_attr_sql_node.aggregate_type == AggregateType::MAX) {
-    return RC::SUCCESS;
-  }
-  else if (field_->type() != AttrType::INTS && field_->type() != AttrType::FLOATS) {
+  if (rel_attr_sql_node.aggregate_type == AggregateType::AVG || rel_attr_sql_node.aggregate_type == AggregateType::SUM) {
+    if (field_->type() != AttrType::INTS && field_->type() != AttrType::FLOATS) {
       return RC::INVALID_ARGUMENT;
+    }
   }
   return RC::SUCCESS;
 }
