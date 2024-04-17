@@ -82,12 +82,12 @@ RecordPageHandler::~RecordPageHandler() { cleanup(); }
 RC RecordPageHandler::init(DiskBufferPool &buffer_pool, PageNum page_num, bool readonly)
 {
   if (disk_buffer_pool_ != nullptr) {
-    if (frame_->page_num() == page_num) {
-      LOG_WARN("Disk buffer pool has been opened for page_num %d.", page_num);
+    //if (frame_->page_num() == page_num) {
+      //LOG_WARN("Disk buffer pool has been opened for page_num %d.", page_num);
       return RC::RECORD_OPENNED;
-    } else {
-      cleanup();
-    }
+    //} else {
+      //cleanup();
+    //}
   }
 
   RC ret = RC::SUCCESS;
@@ -292,7 +292,7 @@ RC RecordPageHandler::update_record(Record *rec)
   Bitmap bitmap(bitmap_, page_header_->record_capacity);
   if(!bitmap.get_bit(rec->rid().slot_num)){
     LOG_ERROR("Invalid slot_num %d, slot is empty, page_num %d.", rec->rid().slot_num, frame_->page_num());
-    return RC::RECORD_NOT_EXIST;
+    return RC::RECORD_OF_RECORD_NOT_EXIST;
   }
   
   //更新记录

@@ -52,10 +52,13 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   const std::vector<FieldMeta>* fieldMeta = table_meta.field_metas();
   bool valid = false;
   FieldMeta update_field;
-  for (FieldMeta field :*fieldMeta) {
-    if( 0 == strcmp(field.name(),update.attribute_name.c_str())) {
-      if(field.type() == update.value.attr_type()) {
-        if(field.type() == CHARS && field.len() < update.value.length()) {
+  for ( FieldMeta field :*fieldMeta) {
+    if( 0 == strcmp(field.name(),update.attribute_name.c_str()))
+    {
+      if(field.type() == update.value.attr_type())
+      {
+        if(field.type() == CHARS && field.len() < update.value.length())
+        {
             return RC::INVALID_ARGUMENT;
         }
         valid = true;

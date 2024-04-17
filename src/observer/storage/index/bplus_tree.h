@@ -1,33 +1,33 @@
-/* Copyright (c) 2021 Xie Meiyi(xiemeiyi@hust.edu.cn) and OceanBase and/or its affiliates. All rights reserved.
-miniob is licensed under Mulan PSL v2.
-You can use this software according to the terms and conditions of the Mulan PSL v2.
-You may obtain a copy of Mulan PSL v2 at:
-         http://license.coscl.org.cn/MulanPSL2
-THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-See the Mulan PSL v2 for more details. */
+// /* Copyright (c) 2021 Xie Meiyi(xiemeiyi@hust.edu.cn) and OceanBase and/or its affiliates. All rights reserved.
+// miniob is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details. */
 
-//
-//
+
+
 // Created by Xie Meiyi
 // Rewritten by Longda & Wangyunlai
-//
-//
+
+
 
 #pragma once
 
+#include <string.h>
+#include <sstream>
 #include <functional>
 #include <memory>
-#include <sstream>
-#include <string.h>
 
+#include "storage/record/record_manager.h"
+#include "storage/buffer/disk_buffer_pool.h"
+#include "storage/trx/latch_memo.h"
+#include "sql/parser/parse_defs.h"
 #include "common/lang/comparator.h"
 #include "common/log/log.h"
-#include "sql/parser/parse_defs.h"
-#include "storage/buffer/disk_buffer_pool.h"
-#include "storage/record/record_manager.h"
-#include "storage/trx/latch_memo.h"
 
 /**
  * @brief B+树的实现
@@ -602,8 +602,8 @@ private:
 
   LatchMemo latch_memo_;
 
-  /// 使用左右叶子节点和位置来表示扫描的起始位置和终止位置
-  /// 起始位置和终止位置都是有效的数据
+  // 使用左右叶子节点和位置来表示扫描的起始位置和终止位置
+  // 起始位置和终止位置都是有效的数据
   Frame *current_frame_ = nullptr;
 
   common::MemPoolItem::unique_ptr right_key_;

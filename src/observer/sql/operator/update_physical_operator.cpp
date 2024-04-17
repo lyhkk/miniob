@@ -43,13 +43,12 @@ RC UpdatePhysicalOperator::next()
 
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record &record = row_tuple->record();
-    table_->update_record(record,fields_[0].name(),&values_[0]);//这里暂时没管事务，之后需要修改
+    rc = trx_->update_record(table_, record,fields_[0].name(),&values_[0]);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to update record: %s", strrc(rc));
       return rc;
     }
   }
-
   return RC::RECORD_EOF;
 }
 
