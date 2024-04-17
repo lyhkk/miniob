@@ -62,6 +62,21 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
     join_stmt.reset(join);
   }
 
+  JoinStmt                 *join_stmt_tmp = join_stmt.get();
+  FilterStmt               *condition_tmp = new FilterStmt();
+  std::vector<FilterUnit *> filter_units_tmp;
+  while (join_stmt_tmp != nullptr) {
+    if (join_stmt_tmp->condition() != nullptr) {
+      for (FilterUnit *fu : join_stmt_tmp->condition()->filter_units()) {
+        filter_units_tmp.push_back(fu);
+      }
+      join_stmt_tmp->condition() = nullptr;
+    }
+    join_stmt_tmp = join_stmt_tmp->sub_join().get();
+  }
+  condition_tmp->filter_units().swap(filter_units_tmp);
+  join_stmt.get()->condition() = condition_tmp;
+
   // collect query fields in `select` statement
   std::vector<Field> query_fields;
   for (int i = static_cast<int>(select_sql.attributes.size()) - 1; i >= 0; i--) {

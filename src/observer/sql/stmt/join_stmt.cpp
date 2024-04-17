@@ -49,14 +49,14 @@ RC JoinStmt::create(Db *db, JoinTableSqlNode *&sql_node, JoinStmt *&stmt, std::v
   }
   stmt->sub_join_.reset(sub_join);
 
-  if (!sql_node->join_condition.empty()) {
+  if (sql_node->sub_join != nullptr && !sql_node->sub_join->join_condition.empty()) {
     FilterStmt               *tmp_stmt = new FilterStmt();
     std::vector<FilterUnit *> tmp_filter_units;
 
-    for (int i = 0; i < static_cast<int>(sql_node->join_condition.size()); i++) {
+    for (int i = 0; i < static_cast<int>(sql_node->sub_join->join_condition.size()); i++) {
       FilterUnit *filter_unit = nullptr;
 
-      rc = FilterStmt::create_filter_unit(db, table, &table_map, sql_node->join_condition[i], filter_unit);
+      rc = FilterStmt::create_filter_unit(db, table, &table_map, sql_node->sub_join->join_condition[i], filter_unit);
       if (rc != RC::SUCCESS) {
         delete tmp_stmt;
         LOG_WARN("failed to create filter unit. condition index=%d", i);

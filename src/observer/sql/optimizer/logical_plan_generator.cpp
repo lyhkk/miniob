@@ -113,8 +113,8 @@ RC LogicalPlanGenerator::create_plan(JoinStmt *join_stmt, const std::vector<Fiel
   }
 
   JoinLogicalOperator *join_oper = new JoinLogicalOperator;
-  join_oper->add_child(std::move(sub_op));
   join_oper->add_child(std::move(table_oper));
+  join_oper->add_child(std::move(sub_op));
   if (join_stmt->condition() == nullptr) {
     logical_operator.reset(join_oper);
   } else {

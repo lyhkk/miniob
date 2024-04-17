@@ -489,21 +489,7 @@ from:
     }
 
 join_table:
-    join_table_inner INNER JOIN ID as_info join_on
-    {
-      $$ = new JoinTableSqlNode;
-      $$->relation_name = $4;
-      free($4);
-      if ($5 != nullptr) {
-        $$->alias_name = $5;
-      }
-      $$->join_condition.swap(*$6);
-      delete($6);
-      $$->sub_join = $1;
-    }
-
-join_table_inner:
-    ID as_info
+    ID as_info join_table_inner
     {
       $$ = new JoinTableSqlNode;
       $$->relation_name = $1;
@@ -511,23 +497,40 @@ join_table_inner:
       if ($2 != nullptr) {
         $$->alias_name = $2;
       }
+      $$->sub_join = $3;
     }
-    | join_table_inner INNER JOIN ID as_info join_on
+
+join_table_inner:
+    INNER JOIN ID as_info join_on
     {
       $$ = new JoinTableSqlNode;
-      $$->relation_name = $4;
-      free($4);
-      if ($5 != nullptr) {
-        $$->alias_name = $5;
+      $$->relation_name = $3;
+      free($3);
+      if ($4 != nullptr) {
+        $$->alias_name = $4;
       }
-      $$->join_condition.swap(*$6);
-      delete($6);
-      $$->sub_join = $1;
+      $$->join_condition.swap(*$5);
+      delete($5);
+    }
+    | INNER JOIN ID as_info join_on join_table_inner
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $3;
+      free($3);
+      if ($4 != nullptr) {
+        $$->alias_name = $4;
+      }
+      $$->join_condition.swap(*$5);
+      delete($5);
+      $$->sub_join = $6;
     }
     ;
 
 join_on:
-    ON condition_list
+    {
+
+    }
+    | ON condition_list
     {
       $$ = $2;
     }
