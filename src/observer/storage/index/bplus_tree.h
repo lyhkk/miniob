@@ -63,7 +63,7 @@ public:
   int operator()(const char *v1, const char *v2) const
   {
     switch (attr_type_) {
-      case INTS: {
+      case INTS: case DATES: {
         return common::compare_int((void *)v1, (void *)v2);
       } break;
       case FLOATS: {
@@ -135,6 +135,12 @@ public:
       } break;
       case FLOATS: {
         return std::to_string(*(float *)v);
+      }
+      case DATES: {
+        int y = *(int *)v / 10000;
+        int m = (*(int *)v % 10000) / 100;
+        int d = *(int *)v % 100;
+        return std::to_string(y) + "-" + std::to_string(m) + "-" + std::to_string(d);
       }
       case CHARS: {
         std::string str;
