@@ -95,6 +95,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         INFILE
         EXPLAIN
         AS
+        INNER
+        JOIN
         EQ
         LT
         GT
@@ -116,7 +118,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   std::vector<Value> *              value_list;
   std::vector<ConditionSqlNode> *   condition_list;
   std::vector<RelAttrSqlNode> *     rel_attr_list;
-  std::vector<RelRelaSqlNode> *     relation_list;
+  JoinTableSqlNode *                relation_list;
   char *                            string;
   int                               number;
   float                             floats;
@@ -143,6 +145,10 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <condition_list>      condition_list
 %type <rel_attr_list>       select_attr
 %type <relation_list>       rel_list
+%type <relation_list>       from
+%type <relation_list>       join_table
+%type <relation_list>       join_table_inner
+%type <condition_list>      join_on
 %type <rel_attr_list>       attr_list
 %type <string>              as_info 
 %type <expression>          expression
@@ -438,17 +444,16 @@ select_stmt:        /*  select 语句的语法解析树*/
         $$->selection.attributes.swap(*$2);
         delete $2;
       }
-      if ($6 != nullptr) {
-        $$->selection.relations.swap(*$6);
-        delete $6;
-      } 
-      RelRelaSqlNode RelaNode;
-      RelaNode.relation_name = $4;
+      
+      JoinTableSqlNode joinTable;
+      joinTable.relation_name = $4;
       if ($5 != nullptr) {
-        RelaNode.alias_name = $5;
+        joinTable.alias_name = $5;
       }
-      $$->selection.relations.emplace_back(RelaNode);
-      std::reverse($$->selection.relations.begin(), $$->selection.relations.end());
+      if ($6 != nullptr) {
+        joinTable.sub_join = $6;
+      } 
+      $$->selection.table = &joinTable;
 
       if ($7 != nullptr) {
         $$->selection.conditions.swap(*$7);
@@ -456,7 +461,77 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
       free($4);
     }
+    | SELECT select_attr from where
+    {
+      $$ = new ParsedSqlNode(SCF_SELECT);
+      if ($2 != nullptr) {
+        $$->selection.attributes.swap(*$2);
+        delete $2;
+      }
+
+      $$->selection.table = $3;
+
+      if ($4 != nullptr) {
+        $$->selection.conditions.swap(*$4);
+        delete $4;
+      }
+    }
     ;
+
+from: 
+    FROM rel_list 
+    {
+      $$ = $2;
+    }
+    | FROM join_table
+    {
+      $$ = $2;
+    }
+
+join_table:
+    ID as_info INNER JOIN join_table_inner join_on
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $1;
+      free($1);
+      if ($2 != nullptr) {
+        $$->alias_name = $2;
+      }
+      $$->join_condition.swap(*$6);
+      delete($6);
+      $$->sub_join = $5;
+    }
+
+join_table_inner:
+    ID as_info
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $1;
+      free($1);
+      if ($2 != nullptr) {
+        $$->alias_name = $2;
+      }
+    }
+    | ID as_info INNER JOIN join_table_inner join_on
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $1;
+      free($1);
+      if ($2 != nullptr) {
+        $$->alias_name = $2;
+      }
+      $$->join_condition.swap(*$6);
+      delete($6);
+      $$->sub_join = $5;
+    }
+    ;
+
+join_on:
+    ON condition_list
+    {
+      $$ = $2;
+    }
+
 calc_stmt:
     CALC expression_list
     {
@@ -585,19 +660,14 @@ rel_list:
       $$ = nullptr;
     }
     | COMMA ID as_info rel_list {
+      $$ = new JoinTableSqlNode;
       if ($4 != nullptr) {
-        $$ = $4;
-      } else {
-        $$ = new std::vector<RelRelaSqlNode>;
+        $$->sub_join = $4;
       }
-      RelRelaSqlNode RelaNode;
-      RelaNode.relation_name = $2;
+      $$->relation_name = $2;
       if ($3 != nullptr) {
-        RelaNode.alias_name = $3;
+        $$->alias_name = $3;
       }
-
-      $$->emplace_back(RelaNode);
-      free($2);
     }
     ;
 where:

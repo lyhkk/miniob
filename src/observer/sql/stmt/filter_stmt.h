@@ -76,7 +76,7 @@ public:
   virtual ~FilterStmt();
 
 public:
-  const std::vector<FilterUnit *> &filter_units() const { return filter_units_; }
+  std::vector<FilterUnit *> &filter_units() { return filter_units_; }
 
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,

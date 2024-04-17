@@ -18,6 +18,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
+#include "sql/stmt/join_stmt.h"
+#include "common/rc.h"
 
 SelectStmt::~SelectStmt()
 {
@@ -46,21 +48,18 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
   // collect tables in `from` statement
   std::vector<Table *>                     tables;
   std::unordered_map<std::string, Table *> table_map;
-  for (size_t i = 0; i < select_sql.relations.size(); i++) {
-    const char *table_name = select_sql.relations[i].relation_name.c_str();
-    if (nullptr == table_name) {
-      LOG_WARN("invalid argument. relation name is null. index=%d", i);
-      return RC::INVALID_ARGUMENT;
-    }
 
-    Table *table = db->find_table(table_name);
-    if (nullptr == table) {
-      LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
-      return RC::SCHEMA_TABLE_NOT_EXIST;
+  RC                        rc = RC::SUCCESS;
+  std::unique_ptr<JoinStmt> join_stmt;
+  JoinTableSqlNode         *join_table = select_sql.table;
+  if (join_table != nullptr) {
+    JoinStmt *join = nullptr;
+    rc             = JoinStmt::create(db, join_table, join, tables, table_map);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create join stmt");
+      return rc;
     }
-
-    tables.push_back(table);
-    table_map.insert(std::pair<std::string, Table *>(table_name, table));
+    join_stmt.reset(join);
   }
 
   // collect query fields in `select` statement
@@ -132,7 +131,7 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
 
   // create filter statement in `where` statement
   FilterStmt *filter_stmt = nullptr;
-  RC          rc          = FilterStmt::create(db,
+  rc                      = FilterStmt::create(db,
       default_table,
       &table_map,
       select_sql.conditions.data(),
@@ -149,6 +148,7 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->tables_.swap(tables);
   select_stmt->query_fields_.swap(query_fields);
   select_stmt->filter_stmt_ = filter_stmt;
-  stmt                      = select_stmt;
+  select_stmt->join_stmt_.swap(join_stmt);
+  stmt = select_stmt;
   return RC::SUCCESS;
 }
