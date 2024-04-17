@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "net/buffered_writer.h"
 #include "session/session.h"
 #include "sql/expr/tuple.h"
+#include <cstdio>
 
 using namespace std;
 
@@ -39,16 +40,13 @@ static RC aggregation_output(vector<string> collum_value, BufferedWriter *writer
     size_t pos = cell_str.find('.');
     if (pos != string::npos) {
       // Find the last non-zero digit after the decimal point
-      size_t last_non_zero = cell_str.find_last_not_of('0', pos + 1);
-      if (last_non_zero != string::npos) {
-          // Remove trailing zeros
-          cell_str = cell_str.substr(0, last_non_zero + 1);
+      while (cell_str.back() == '0') {
+        cell_str.pop_back();
       }
       if (cell_str.back() == '.') {
         cell_str.pop_back();
       }
     }
-
     RC rc = writer->writen(cell_str.data(), cell_str.size());
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to send data to client. err=%s", strerror(errno));
@@ -64,7 +62,10 @@ static void set_avg_value(int count, vector<pair<AggregateType, string>> &cell_v
   for (auto &it : cell_value) {
     AggregateType aggregate_type = it.first;
     if (aggregate_type == AggregateType::AVG) {
-      collum_value[i] = to_string(stof(collum_value[i]) / count);
+      // 精确到小数点后两位
+      float value = stof(collum_value[i]);
+      float avg = static_cast<double>(value) / count;
+      collum_value[i] = to_string(avg);
     }
     i++;
   }
