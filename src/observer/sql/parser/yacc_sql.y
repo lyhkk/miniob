@@ -617,6 +617,12 @@ rel_attr:
       $$->attribute_name = "*";
       $$->aggregate_type = $1;
     }
+    | aggregate_type LBRACE '*' COMMA rel_attr RBRACE {
+      $$ = new RelAttrSqlNode();
+      $$->relation_name  = "*";
+      $$->attribute_name = "*";
+      $$->aggregate_type = $1;
+    }
     ;
     ;
 

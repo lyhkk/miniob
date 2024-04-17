@@ -339,8 +339,7 @@ RC PlainCommunicator::write_function_value(const SQLStageEvent *sql_event, bool 
   return RC::SUCCESS;
 }
 
-RC PlainCommunicator::
-write_aggregate_value(SqlResult *sql_result) {
+RC PlainCommunicator::write_aggregate_value(SqlResult *sql_result, bool &need_disconnect) {
   // aggregation func: 需要统计的数据如下
   RC rc = RC::SUCCESS;
   int count = 0;
@@ -386,6 +385,11 @@ write_aggregate_value(SqlResult *sql_result) {
   
   if (rc == RC::RECORD_EOF) {
     rc = RC::SUCCESS;
+  }
+  need_disconnect = false;
+  RC rc_close = sql_result->close();
+  if (OB_SUCC(rc)) {
+    rc = rc_close;
   }
   return rc;
 }
@@ -477,7 +481,7 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
 
 
   if (flag_for_aggr_func == 1) {
-    return(write_aggregate_value(sql_result));
+    return write_aggregate_value(sql_result, need_disconnect);
   }
 
   Tuple *tuple = nullptr;
@@ -511,15 +515,14 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
         return rc;
       }
     }
-  }
+    char newline = '\n';
 
-  char newline = '\n';
-
-  rc = writer_->writen(&newline, 1);
-  if (OB_FAIL(rc)) {
-    LOG_WARN("failed to send data to client. err=%s", strerror(errno));
-    sql_result->close();
-    return rc;
+    rc = writer_->writen(&newline, 1);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+      sql_result->close();
+      return rc;
+    }
   }
 
   if (rc == RC::RECORD_EOF) {
