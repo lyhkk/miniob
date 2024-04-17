@@ -545,7 +545,7 @@ RC decode_query_packet(std::vector<char> &net_packet, QueryPacket &query_packet)
 RC create_version_comment_sql_result(SqlResult *sql_result)
 {
   TupleSchema   tuple_schema;
-  TupleCellSpec cell_spec("", "", "@@version_comment");
+  TupleCellSpec cell_spec("@@version_comment");
   tuple_schema.append_cell(cell_spec);
 
   sql_result->set_return_code(RC::SUCCESS);
@@ -788,6 +788,10 @@ RC MysqlCommunicator::write_result(SessionEvent *event, bool &need_disconnect)
   }
   writer_->flush();
   return rc;
+}
+
+RC MysqlCommunicator::write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) {
+  return RC::UNIMPLENMENT;
 }
 
 RC MysqlCommunicator::send_packet(const BasePacket &packet)

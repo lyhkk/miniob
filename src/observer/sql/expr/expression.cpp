@@ -19,7 +19,7 @@ using namespace std;
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  return tuple.find_cell(TupleCellSpec(table_name(), field_name(), nullptr, field().is_length_func_, field().is_round_func_, field().round_num_, field().date_format_.c_str()), value);
 }
 
 RC ValueExpr::get_value(const Tuple &tuple, Value &value) const

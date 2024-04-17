@@ -17,6 +17,8 @@ See the Mulan PSL v2 for more details. */
 #include <vector>
 
 #include "net/communicator.h"
+#include "sql/parser/value.h"
+#include "event/session_event.h"
 
 /**
  * @brief 与客户端进行通讯
@@ -31,11 +33,13 @@ public:
 
   RC read_event(SessionEvent *&event) override;
   RC write_result(SessionEvent *event, bool &need_disconnect) override;
+  RC write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) override;
 
 private:
   RC write_state(SessionEvent *event, bool &need_disconnect);
   RC write_debug(SessionEvent *event, bool &need_disconnect);
   RC write_result_internal(SessionEvent *event, bool &need_disconnect);
+  RC write_aggregate_value(SqlResult *sql_result, bool &need_disconnect);
 
 protected:
   std::vector<char> send_message_delimiter_;  ///< 发送消息分隔符

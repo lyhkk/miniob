@@ -98,6 +98,7 @@ public:
   const char *name() const;
 
   const TableMeta &table_meta() const;
+  TableMeta &table_meta_for_function(); // TODO: 这种实现非常丑陋，现在可以轻松的拿到非常量的table_meta，进行修改，这是不应该的
 
   RC sync();
 

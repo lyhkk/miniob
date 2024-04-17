@@ -34,11 +34,18 @@ RC SqlTaskHandler::handle_event(Communicator *communicator)
 
   SQLStageEvent sql_event(event, event->query());
 
-  (void)handle_sql(&sql_event);
+  rc = handle_sql(&sql_event);
 
   bool need_disconnect = false;
+  // 如果是select语句，且不需要访问数据库，只需要计算，则直接返回计算结果
+  
+  if (rc == RC::SELECT_FOR_COMPUTE) {
+    rc = communicator->write_function_value(&sql_event, need_disconnect);
+  }
+  else {
+    rc = communicator->write_result(event, need_disconnect);
+  }
 
-  rc = communicator->write_result(event, need_disconnect);
   LOG_INFO("write result return %s", strrc(rc));
   event->session()->set_current_request(nullptr);
   Session::set_current_session(nullptr);
@@ -60,6 +67,8 @@ RC SqlTaskHandler::handle_sql(SQLStageEvent *sql_event)
   }
 
   rc = parse_stage_.handle_request(sql_event);
+  if (rc == RC::SELECT_FOR_COMPUTE)
+    return rc;
   if (OB_FAIL(rc)) {
     LOG_TRACE("failed to do parse. rc=%s", strrc(rc));
     return rc;

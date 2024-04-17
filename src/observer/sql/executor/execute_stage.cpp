@@ -68,9 +68,20 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
 
       for (const Field &field : select_stmt->query_fields()) {
         if (with_table_name) {
-          schema.append_cell(field.table_name(), field.field_name());
+          // 这个alias是为了支持函数的别名
+          const char *alias = field.function_alias(field.table_name(), field.field_name());
+          if (alias != nullptr) {
+            schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+          } else {
+            schema.append_cell(field.table_name(), field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+          }
         } else {
-          schema.append_cell(field.field_name());
+          const char *alias = field.function_alias(nullptr, field.field_name());
+          if (alias != nullptr) {
+            schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+          } else {
+            schema.append_cell(field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+          }
         }
       }
     } break;

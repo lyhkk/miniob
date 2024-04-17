@@ -27,6 +27,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/meta_util.h"
 #include "storage/index/bplus_tree_index.h"
 #include "storage/index/index.h"
+#include "storage/index/index_meta.h"
 #include "storage/record/record_manager.h"
 #include "storage/table/table.h"
 #include "storage/table/table_meta.h"
@@ -292,6 +293,7 @@ RC Table::recover_insert_record(Record &record)
 const char *Table::name() const { return table_meta_.name(); }
 
 const TableMeta &Table::table_meta() const { return table_meta_; }
+TableMeta       &Table::table_meta_for_function() { return table_meta_; }
 
 RC Table::make_record(int value_num, const Value *values, Record &record)
 {
