@@ -19,6 +19,8 @@ See the Mulan PSL v2 for more details. */
 #include "session/session.h"
 #include "sql/expr/tuple.h"
 #include <cstdio>
+#include <regex>
+#include <cmath>
 
 using namespace std;
 
@@ -37,14 +39,24 @@ static RC aggregation_output(vector<string> collum_value, BufferedWriter *writer
 
     string cell_str;
     cell_str = collum_value[i];
-    size_t pos = cell_str.find('.');
-    if (pos != string::npos) {
-      // Find the last non-zero digit after the decimal point
-      while (cell_str.back() == '0') {
-        cell_str.pop_back();
+    // 如果是float形式的字符串
+    regex pattern("\\d+(\\.\\d+)?");
+    if (regex_match(cell_str, pattern)) {
+      float cell_float = stof(cell_str);
+      size_t pos = cell_str.find('.');
+      if (cell_str.size() - pos >= 3) {
+        // 精确到小数点后两位
+        cell_float = round(cell_float * 100) / 100;
       }
-      if (cell_str.back() == '.') {
-        cell_str.pop_back();
+      cell_str = to_string(cell_float);
+      if (pos != string::npos) {
+        // Find the last non-zero digit after the decimal point
+        while (cell_str.back() == '0') {
+          cell_str.pop_back();
+        }
+        if (cell_str.back() == '.') {
+          cell_str.pop_back();
+        }
       }
     }
     RC rc = writer->writen(cell_str.data(), cell_str.size());
@@ -78,7 +90,6 @@ static void aggregation_compute(int count, vector<pair<AggregateType, string>> &
     string value = it.second;
     AttrType attr_type = cell_type[i];
     string count_str = to_string(count);
-    // printf("value: %f\n", value);
     switch (aggregate_type) {
       case AggregateType::COUNT:
         if (count == 1) {
