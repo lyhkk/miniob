@@ -43,12 +43,14 @@ static RC aggregation_output(vector<string> collum_value, BufferedWriter *writer
     regex pattern("\\d+(\\.\\d+)?");
     if (regex_match(cell_str, pattern)) {
       float cell_float = stof(cell_str);
+      int cell_int;
       size_t pos = cell_str.find('.');
-      if (cell_str.size() - pos >= 3) {
+      if (cell_str.size() - pos > 3) {
         // 精确到小数点后两位
-        cell_float = round(cell_float * 100) / 100;
+        cell_int = round(cell_float * 100);
+        cell_str = to_string(cell_int);
+        cell_str.insert(cell_str.end() -  2, '.');
       }
-      cell_str = to_string(cell_float);
       pos = cell_str.find('.');
       if (pos != string::npos) {
         // Find the last non-zero digit after the decimal point
