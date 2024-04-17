@@ -489,17 +489,17 @@ from:
     }
 
 join_table:
-    ID as_info INNER JOIN join_table_inner join_on
+    join_table_inner INNER JOIN ID as_info join_on
     {
       $$ = new JoinTableSqlNode;
-      $$->relation_name = $1;
-      free($1);
-      if ($2 != nullptr) {
-        $$->alias_name = $2;
+      $$->relation_name = $4;
+      free($4);
+      if ($5 != nullptr) {
+        $$->alias_name = $5;
       }
       $$->join_condition.swap(*$6);
       delete($6);
-      $$->sub_join = $5;
+      $$->sub_join = $1;
     }
 
 join_table_inner:
@@ -512,17 +512,17 @@ join_table_inner:
         $$->alias_name = $2;
       }
     }
-    | ID as_info INNER JOIN join_table_inner join_on
+    | join_table_inner INNER JOIN ID as_info join_on
     {
       $$ = new JoinTableSqlNode;
-      $$->relation_name = $1;
-      free($1);
-      if ($2 != nullptr) {
-        $$->alias_name = $2;
+      $$->relation_name = $4;
+      free($4);
+      if ($5 != nullptr) {
+        $$->alias_name = $5;
       }
       $$->join_condition.swap(*$6);
       delete($6);
-      $$->sub_join = $5;
+      $$->sub_join = $1;
     }
     ;
 

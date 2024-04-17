@@ -21,5 +21,5 @@ private:
   Table                    *table_ = nullptr;
   std::string               alias_name_;
   std::unique_ptr<JoinStmt> sub_join_;
-  FilterStmt               *condition_;  // 默认当前都是AND关系
+  FilterStmt               *condition_ = nullptr;  // 默认当前都是AND关系
 };
