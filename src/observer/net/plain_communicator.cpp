@@ -70,11 +70,12 @@ static void set_avg_value(int count, vector<pair<AggregateType, string>> &cell_v
   }
 }
 
-static void aggregation_compute(int count, vector<pair<AggregateType, string>> &cell_value, vector<string> &collum_value) {
+static void aggregation_compute(int count, vector<pair<AggregateType, string>> &cell_value, vector<string> &collum_value, vector<AttrType> &cell_type) {
   int i = 0;
   for (auto &it : cell_value) {
     AggregateType aggregate_type = it.first;
     string value = it.second;
+    AttrType attr_type = cell_type[i];
     string count_str = to_string(count);
     // printf("value: %f\n", value);
     switch (aggregate_type) {
@@ -96,15 +97,26 @@ static void aggregation_compute(int count, vector<pair<AggregateType, string>> &
         if (count == 1) {
           collum_value.push_back(value);
         } else {
-          collum_value[i] = collum_value[i] > value ? collum_value[i] : value;
+          if (attr_type == AttrType::CHARS || attr_type == AttrType::DATES) {
+            collum_value[i] = collum_value[i] > value ? collum_value[i] : value;
+          } else {
+            float collum_float = stof(collum_value[i]);
+            float value_float = stof(value);
+            collum_value[i] = to_string(collum_float > value_float ? collum_float : value_float);
+          }
         }
         break;
       case AggregateType::MIN:
         if (count == 1) {
           collum_value.push_back(value);
         } else {
-          // 按照ascii码比较大小
-          collum_value[i] = collum_value[i] < value ? collum_value[i] : value;
+          if (attr_type == AttrType::CHARS || attr_type == AttrType::DATES) {
+            collum_value[i] = collum_value[i] < value ? collum_value[i] : value;
+          } else {
+            float collum_float = stof(collum_value[i]);
+            float value_float = stof(value);
+            collum_value[i] = to_string(collum_float < value_float ? collum_float : value_float);
+          }
         }
         break;
       case AggregateType::SUM:
@@ -352,6 +364,7 @@ RC PlainCommunicator::write_aggregate_value(SqlResult *sql_result, bool &need_di
     int cell_num = tuple->cell_num();
     // aggregation func: 需要统计的数据
     vector<pair<AggregateType, std::string>> cell_value;
+    vector<AttrType> cell_type;
 
     for (int i = 0; i < cell_num; i++) {
       Value value;
@@ -365,10 +378,11 @@ RC PlainCommunicator::write_aggregate_value(SqlResult *sql_result, bool &need_di
         assert(value.aggregate_type_ == AggregateType::MIN || value.aggregate_type_ == AggregateType::MAX);
       }
       cell_value.push_back(std::make_pair(value.aggregate_type_, value.get_string()));
+      cell_type.push_back(value.attr_type());
     }
     rc = sql_result->next_tuple(tuple);
     count++;
-    aggregation_compute(count, cell_value, collum_value);
+    aggregation_compute(count, cell_value, collum_value, cell_type);
     if (rc != RC::SUCCESS) {
       set_avg_value(count, cell_value, collum_value);
     }
