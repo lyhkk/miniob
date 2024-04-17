@@ -49,6 +49,7 @@ static RC aggregation_output(vector<string> collum_value, BufferedWriter *writer
         cell_float = round(cell_float * 100) / 100;
       }
       cell_str = to_string(cell_float);
+      pos = cell_str.find('.');
       if (pos != string::npos) {
         // Find the last non-zero digit after the decimal point
         while (cell_str.back() == '0') {
