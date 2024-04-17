@@ -16,9 +16,12 @@ See the Mulan PSL v2 for more details. */
 #include <common/lang/string.h>
 
 #include "common/log/log.h"
+#include "common/rc.h"
 #include "storage/table/table_meta.h"
 #include "storage/trx/trx.h"
 #include "json/json.h"
+#include <cstdint>
+#include <cstring>
 
 using namespace std;
 

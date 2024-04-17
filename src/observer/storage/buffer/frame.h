@@ -14,17 +14,17 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
-#include <atomic>
-#include <mutex>
 #include <pthread.h>
-#include <set>
 #include <string.h>
 #include <string>
+#include <mutex>
+#include <set>
+#include <atomic>
 
-#include "common/lang/mutex.h"
-#include "common/log/log.h"
-#include "common/types.h"
 #include "storage/buffer/page.h"
+#include "common/log/log.h"
+#include "common/lang/mutex.h"
+#include "common/types.h"
 
 /**
  * @brief 页帧标识符

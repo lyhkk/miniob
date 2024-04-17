@@ -190,6 +190,13 @@ public:
   RC get_record(const RID *rid, Record *rec);
 
   /**
+  / @brief 更新一条记录
+  *
+  * @param rec 要更新的记录
+  */
+  RC update_record(Record *rec);
+
+  /**
    * @brief 返回该记录页的页号
    */
   PageNum get_page_num() const;
@@ -296,6 +303,12 @@ public:
    *       如果page_handler 释放了，那也不能再访问rec对象了。
    */
   RC get_record(RecordPageHandler &page_handler, const RID *rid, bool readonly, Record *rec);
+
+  /**
+   * @brief 更新一条记录
+   * @param rec 要更新的记录
+  */
+  RC update_record(Record *rec);
 
   /**
    * @brief 与get_record类似，访问某个记录，并提供回调函数来操作相应的记录

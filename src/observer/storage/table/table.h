@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "storage/table/table_meta.h"
 #include <functional>
+#include <vector>
 
 struct RID;
 class Record;
@@ -79,6 +80,7 @@ public:
    */
   RC insert_record(Record &record);
   RC delete_record(const Record &record);
+  RC update_record(Record &record, const char* attr_name, Value *value);
   RC visit_record(const RID &rid, bool readonly, std::function<void(Record &)> visitor);
   RC get_record(const RID &rid, Record &record);
 
@@ -96,6 +98,7 @@ public:
   const char *name() const;
 
   const TableMeta &table_meta() const;
+  TableMeta &table_meta_for_function(); // TODO: 这种实现非常丑陋，现在可以轻松的拿到非常量的table_meta，进行修改，这是不应该的
 
   RC sync();
 

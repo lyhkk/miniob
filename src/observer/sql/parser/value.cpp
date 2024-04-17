@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include <iostream>
 #include <sstream>
 #include <regex>
+#include <cmath>
 
 const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates","ints", "floats", "booleans"};
 
@@ -39,7 +40,7 @@ AttrType attr_type_from_string(const char *s)
   return UNDEFINED;
 }
 
-Value::Value(int val) { set_int(val); }
+Value::Value(int val) { set_int(val);}
 
 Value::Value(float val) { set_float(val); }
 
@@ -51,7 +52,6 @@ Value::Value(const char *s, int len /*= 0*/) {
   std::regex pattern("\\d+-\\d+-\\d+");
   if( std::regex_match(p, pattern) ) {
     sscanf(p, "%d-%d-%d", &y, &m, &d);
-    printf("y=%d, m=%d, d=%d\n", y, m, d);
     if (!check_date(y, m, d)) {
       invalid_date();
       return;
@@ -150,7 +150,7 @@ void Value::set_date(int val)
 {
   attr_type_            = DATES;
   num_value_.int_value_ = val;
-  length_               = sizeof(val); // xxxx-xx-xx
+  length_               = sizeof(val);
 }
 
 void Value::set_value(const Value &value)
@@ -386,4 +386,47 @@ bool Value::get_boolean() const
     }
   }
   return false;
+}
+
+std::string Value::function_data(const char *date_format) {
+  if (is_length_func_ == 1) {
+    std::string temp = get_string();
+    set_int(temp.size());
+    is_length_func_ = 0;
+    return to_string();
+  } 
+  else if (is_round_func_ == 1) {
+    float value = get_float();
+    // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
+    float temp = value * std::pow(10, round_num_);
+    temp = std::round(temp);
+    temp = temp / std::pow(10, round_num_);
+    if (round_num_ <= 0) {
+      set_int(temp);
+    }
+    else {
+      set_float(temp);
+    }
+    is_round_func_ = 0;
+    return to_string();
+  } 
+  else if (is_date_format_func_ == 1) {
+    std::string date_format_ = date_format;
+    int date = get_int();
+    std::string date_str = std::to_string(date);
+    std::stringstream ss(date_str);
+    tm tm = {};
+    char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
+    if (formatted_date == NULL) {
+      LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+    }
+    else {
+      char buffer[80];
+      strftime(buffer, 80, date_format_.c_str(), &tm);
+      set_string(buffer);
+      is_date_format_func_ = 0;
+      return to_string();
+    }
+  } 
+  return "";
 }
