@@ -43,7 +43,9 @@ struct RelAttrSqlNode
   int round_num;               ///< round函数的参数
   std::string function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
   std::string alias_name;      ///< 别名
+  AggregateType aggregate_type;///< 聚合函数类型
 
+  RelAttrSqlNode () : aggregate_type(AggregateType::NONE) {}
   AttrType get_func_attr_type(AttrType type) const { // function功能，需要修改type
     if (is_length_func == 1) {
       return AttrType::INTS;

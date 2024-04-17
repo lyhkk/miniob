@@ -46,6 +46,22 @@ RC Field::check_function_type(const RelAttrSqlNode rel_attr_sql_node) {
   return RC::SUCCESS;
 }
 
+RC Field::check_aggregate_func_type(const RelAttrSqlNode rel_attr_sql_node) {
+  if (rel_attr_sql_node.aggregate_type == AggregateType::NONE || rel_attr_sql_node.aggregate_type == AggregateType::COUNT) {
+    return RC::SUCCESS;
+  }
+  else if (field_->type() == AttrType::CHARS && rel_attr_sql_node.aggregate_type == AggregateType::MIN) {
+    return RC::SUCCESS;
+  }
+  else if (field_->type() == AttrType::CHARS && rel_attr_sql_node.aggregate_type == AggregateType::MAX) {
+    return RC::SUCCESS;
+  }
+  else if (field_->type() != AttrType::INTS && field_->type() != AttrType::FLOATS) {
+      return RC::INVALID_ARGUMENT;
+  }
+  return RC::SUCCESS;
+}
+
 AttrType Field::get_function_type() const{
   if (is_length_func_ == 1) {
     return AttrType::INTS;
@@ -88,6 +104,32 @@ const char* Field::function_alias(const char *table_name, const char *field_name
   }
   else if (date_format_ != "") {
     std::string tmp = "DATE_FORMAT(" + whole_name_str + ", '" + date_format_ + "')";
+    strcpy(alias, tmp.c_str());
+  }
+  else if (aggregate_type_ != AggregateType::NONE) {
+    std::string tmp = "";
+    switch (aggregate_type_) {
+      case AggregateType::COUNT:
+        tmp = "COUNT(" + whole_name_str + ")";
+        break;
+      case AggregateType::SUM:
+        tmp = "SUM(" + whole_name_str + ")";
+        break;
+      case AggregateType::AVG:
+        tmp = "AVG(" + whole_name_str + ")";
+        break;
+      case AggregateType::MAX:
+        tmp = "MAX(" + whole_name_str + ")";
+        break;
+      case AggregateType::MIN:
+        tmp = "MIN(" + whole_name_str + ")";
+        break;
+      case AggregateType::COUNT_STAR:
+        tmp = "COUNT(*)";
+        break;
+      default:
+        break;
+    }
     strcpy(alias, tmp.c_str());
   }
   else {

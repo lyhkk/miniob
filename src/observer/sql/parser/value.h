@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <string>
 
+
 /**
  * @brief 属性的类型
  *
@@ -29,6 +30,21 @@ enum AttrType
   FLOATS,    ///< 浮点数类型(4字节)
   BOOLEANS,  ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };
+
+/**
+ * @brief 属性使用的聚合函数类型
+ *
+ */
+enum class AggregateType {
+  COUNT,
+  COUNT_STAR,
+  SUM,
+  AVG,
+  MAX,
+  MIN,
+  NONE
+};
+
 
 const char *attr_type_to_string(AttrType type);
 AttrType    attr_type_from_string(const char *s);
@@ -92,6 +108,7 @@ public:
   int is_round_func_;
   int round_num_;
   int is_date_format_func_;
+  AggregateType aggregate_type_;
 
 
 private:

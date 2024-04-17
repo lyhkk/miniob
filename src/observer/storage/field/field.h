@@ -25,13 +25,15 @@ class Field
 {
 public:
   Field() = default;
-  Field(const Table *table, const FieldMeta *field, int is_length_func = 0, int is_round_func = 0, int round_num = 0, std::string date_format = "") {
+  Field(const Table *table, const FieldMeta *field, int is_length_func = 0, int is_round_func = 0, int round_num = 0, std::string date_format = "",
+      AggregateType aggregate_type = AggregateType::NONE) {
     this->table_ = table;
     this->field_ = field;
     this->is_length_func_ = is_length_func;
     this->is_round_func_ = is_round_func;
     this->round_num_ = round_num;
     this->date_format_ = date_format;
+    this->aggregate_type_ = aggregate_type;
   }
   Field(const Field &) = default;
 
@@ -53,6 +55,8 @@ public:
   const char* function_alias(const char *table_name, const char *field_name) const;
   void        function_data(Value &cell);
 
+  // for "aggregate function"
+  RC          check_aggregate_func_type(const RelAttrSqlNode rel_attr_sql_node);
 
   void set_int(Record &record, int value);
   int  get_int(const Record &record);
@@ -64,6 +68,7 @@ public:
   int      is_round_func_;
   int      round_num_;
   std::string    date_format_;
+  AggregateType aggregate_type_;
 
 private:
   const Table     *table_ = nullptr;

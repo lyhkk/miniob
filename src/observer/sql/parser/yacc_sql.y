@@ -73,6 +73,11 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         LENGTH
         ROUND
         DATE_FORMAT
+        MAX
+        MIN
+        AVG
+        SUM
+        COUNT
         AS
         LBRACE
         RBRACE
@@ -114,6 +119,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   RelAttrSqlNode *                  rel_attr;
   std::vector<AttrInfoSqlNode> *    attr_infos;
   AttrInfoSqlNode *                 attr_info;
+  AggregateType                     aggregate_type;
   Expression *                      expression;
   std::vector<Expression *> *       expression_list;
   std::vector<Value> *              value_list;
@@ -142,6 +148,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <rel_attr>            func_for_imm
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
+%type <aggregate_type>      aggregate_type
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
@@ -408,6 +415,13 @@ value:
     }
     ;
     
+aggregate_type:
+    MAX { $$ = AggregateType::MAX; }
+    | MIN { $$ = AggregateType::MIN; }
+    | AVG { $$ = AggregateType::AVG; }
+    | SUM { $$ = AggregateType::SUM; }
+    | COUNT { $$ = AggregateType::COUNT; }
+    ;
 delete_stmt:    /*  delete 语句的语法解析树*/
     DELETE FROM ID where 
     {
@@ -578,11 +592,37 @@ rel_attr:
       $$->alias_name = $2;
       free($2);
     }
+    | aggregate_type LBRACE rel_attr RBRACE {
+      $$ = $3;
+      $$->aggregate_type = $1;
+    }
+    | aggregate_type LBRACE RBRACE {
+      $$ = new RelAttrSqlNode();
+      $$->aggregate_type = $1;
+      $$->attribute_name = "*";
+      $$->relation_name = "*";
+    }
+    | aggregate_type LBRACE '*' RBRACE {
+      $$ = new RelAttrSqlNode();
+      $$->relation_name  = "";
+      $$->attribute_name = "*";
+      $$->aggregate_type = $1;
+      if ($1 == AggregateType::COUNT) {
+        $$->aggregate_type = AggregateType::COUNT_STAR;
+      }
+    }
+    | aggregate_type LBRACE rel_attr COMMA rel_attr RBRACE {
+      $$ = new RelAttrSqlNode();
+      $$->relation_name  = "*";
+      $$->attribute_name = "*";
+      $$->aggregate_type = $1;
+    }
+    ;
     ;
 
 func_for_imm:
     LENGTH LBRACE SSS RBRACE {
-      $$ = new RelAttrSqlNode;
+      $$ = new RelAttrSqlNode();
       char *tmp = common::substr($3, 1, strlen($3) - 2);
 
       // 字符串长度，得到需要输出的别名和值
@@ -596,7 +636,7 @@ func_for_imm:
       free($3);
     }
     | ROUND LBRACE FLOAT RBRACE {
-      $$ = new RelAttrSqlNode;
+      $$ = new RelAttrSqlNode();
 
       // 四舍五入，得到需要输出的别名和值
       Value round_val = Value((float)$3);
@@ -607,7 +647,7 @@ func_for_imm:
       $$->alias_name = "ROUND(" + std::to_string($3) + ")";
     }
     | ROUND LBRACE FLOAT COMMA NUMBER RBRACE {
-      $$ = new RelAttrSqlNode;
+      $$ = new RelAttrSqlNode();
 
       // 四舍五入，得到需要输出的别名和值
       Value round_val = Value((float)$3);
@@ -621,7 +661,7 @@ func_for_imm:
     | DATE_FORMAT LBRACE DATE_STR COMMA SSS RBRACE {
       char *date_format = common::substr($5, 1, strlen($5) - 2);
       char *date_str = common::substr($3, 1, strlen($3) - 2);
-      $$ = new RelAttrSqlNode;
+      $$ = new RelAttrSqlNode();
 
       // 日期格式化，得到需要输出的别名和值
       Value format_date_val = Value(date_str);

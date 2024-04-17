@@ -15,12 +15,114 @@ See the Mulan PSL v2 for more details. */
 #include "net/plain_communicator.h"
 #include "common/io/io.h"
 #include "common/log/log.h"
-#include "event/session_event.h"
 #include "net/buffered_writer.h"
 #include "session/session.h"
 #include "sql/expr/tuple.h"
 
 using namespace std;
+
+static RC aggregation_output(vector<string> collum_value, BufferedWriter *writer, SqlResult *sql_result) {
+  for (long unsigned int i = 0; i < collum_value.size(); i++) {
+    if (i != 0) {
+      const char *delim = " | ";
+
+      RC rc = writer->writen(delim, strlen(delim));
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+        sql_result->close();
+        return rc;
+      }
+    }
+
+    string cell_str;
+    cell_str = collum_value[i];
+    size_t pos = cell_str.find('.');
+    if (pos != string::npos) {
+      // Find the last non-zero digit after the decimal point
+      size_t last_non_zero = cell_str.find_last_not_of('0', pos + 1);
+      if (last_non_zero != string::npos) {
+          // Remove trailing zeros
+          cell_str = cell_str.substr(0, last_non_zero + 1);
+      }
+      if (cell_str.back() == '.') {
+        cell_str.pop_back();
+      }
+    }
+
+    RC rc = writer->writen(cell_str.data(), cell_str.size());
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+      sql_result->close();
+      return rc;
+    }
+  }
+  return RC::SUCCESS;
+}
+
+static void set_avg_value(int count, vector<pair<AggregateType, string>> &cell_value, vector<string> &collum_value) {
+  int i = 0;
+  for (auto &it : cell_value) {
+    AggregateType aggregate_type = it.first;
+    if (aggregate_type == AggregateType::AVG) {
+      collum_value[i] = to_string(stof(collum_value[i]) / count);
+    }
+    i++;
+  }
+}
+
+static void aggregation_compute(int count, vector<pair<AggregateType, string>> &cell_value, vector<string> &collum_value) {
+  int i = 0;
+  for (auto &it : cell_value) {
+    AggregateType aggregate_type = it.first;
+    string value = it.second;
+    string count_str = to_string(count);
+    // printf("value: %f\n", value);
+    switch (aggregate_type) {
+      case AggregateType::COUNT:
+        if (count == 1) {
+          collum_value.push_back(count_str);
+        } else {
+          collum_value[i] = count_str;
+        }
+        break;
+      case AggregateType::COUNT_STAR:
+        if (count == 1) {
+          collum_value.push_back(count_str);
+        } else {
+          collum_value[i] = count_str;
+        }
+        break;
+      case AggregateType::MAX:
+        if (count == 1) {
+          collum_value.push_back(value);
+        } else {
+          collum_value[i] = collum_value[i] > value ? collum_value[i] : value;
+        }
+        break;
+      case AggregateType::MIN:
+        if (count == 1) {
+          collum_value.push_back(value);
+        } else {
+          // 按照ascii码比较大小
+          collum_value[i] = collum_value[i] < value ? collum_value[i] : value;
+        }
+        break;
+      case AggregateType::SUM:
+      case AggregateType::AVG:
+        if (count == 1) {
+          collum_value.push_back(value);
+        } else {
+          float collum_float = stof(collum_value[i]);
+          float value_float = stof(value);
+          collum_value[i] = to_string(collum_float + value_float);
+        }
+        break;
+      default:
+        break;
+    }
+    i++;
+  }
+}
 
 PlainCommunicator::PlainCommunicator()
 {
@@ -237,6 +339,57 @@ RC PlainCommunicator::write_function_value(const SQLStageEvent *sql_event, bool 
   return RC::SUCCESS;
 }
 
+RC PlainCommunicator::
+write_aggregate_value(SqlResult *sql_result) {
+  // aggregation func: 需要统计的数据如下
+  RC rc = RC::SUCCESS;
+  int count = 0;
+  vector <std::string> collum_value;
+
+  Tuple *tuple = nullptr;
+  rc = sql_result->next_tuple(tuple);
+  while (RC::SUCCESS == rc) {
+    assert(tuple != nullptr);
+    int cell_num = tuple->cell_num();
+    // aggregation func: 需要统计的数据
+    vector<pair<AggregateType, std::string>> cell_value;
+
+    for (int i = 0; i < cell_num; i++) {
+      Value value;
+      rc = tuple->cell_at(i, value);
+      if (rc != RC::SUCCESS) {
+        sql_result->close();
+        return rc;
+      }
+      // min(CHARS) / max(CHARS) 
+      if (value.attr_type() == AttrType::CHARS) {
+        assert(value.aggregate_type_ == AggregateType::MIN || value.aggregate_type_ == AggregateType::MAX);
+      }
+      cell_value.push_back(std::make_pair(value.aggregate_type_, value.get_string()));
+    }
+    rc = sql_result->next_tuple(tuple);
+    count++;
+    aggregation_compute(count, cell_value, collum_value);
+    if (rc != RC::SUCCESS) {
+      set_avg_value(count, cell_value, collum_value);
+    }
+  }
+
+  RC rc1 = aggregation_output(collum_value, writer_, sql_result);
+  if (OB_FAIL(rc1)) {
+    LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+    return rc1;
+  }
+
+  char newline = '\n';
+  writer_->writen(&newline, 1);
+  
+  if (rc == RC::RECORD_EOF) {
+    rc = RC::SUCCESS;
+  }
+  return rc;
+}
+
 RC PlainCommunicator::write_result(SessionEvent *event, bool &need_disconnect) // Return SUCCESS / FAILURE 
 {
   RC rc = write_result_internal(event, need_disconnect);
@@ -279,10 +432,16 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
 
   const TupleSchema &schema   = sql_result->tuple_schema();
   const int          cell_num = schema.cell_num();
+  int                flag_for_aggr_func = 0;
 
   for (int i = 0; i < cell_num; i++) {
     const TupleCellSpec &spec  = schema.cell_at(i);
     const char          *alias = spec.alias();
+
+    if (spec.aggregate_type_ != AggregateType::NONE) {
+      flag_for_aggr_func = 1;
+    }
+
     if (nullptr != alias || alias[0] != 0) {
       if (0 != i) {
         const char *delim = " | ";
@@ -316,7 +475,10 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
     }
   }
 
-  rc = RC::SUCCESS;
+
+  if (flag_for_aggr_func == 1) {
+    return(write_aggregate_value(sql_result));
+  }
 
   Tuple *tuple = nullptr;
   while (RC::SUCCESS == (rc = sql_result->next_tuple(tuple))) {
@@ -348,17 +510,16 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
         sql_result->close();
         return rc;
       }
-      // reset_value_after_function_call(value);
     }
+  }
 
-    char newline = '\n';
+  char newline = '\n';
 
-    rc = writer_->writen(&newline, 1);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
-      sql_result->close();
-      return rc;
-    }
+  rc = writer_->writen(&newline, 1);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+    sql_result->close();
+    return rc;
   }
 
   if (rc == RC::RECORD_EOF) {
