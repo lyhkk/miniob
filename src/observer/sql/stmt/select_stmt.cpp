@@ -89,8 +89,10 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
     }
     join_stmt_tmp = join_stmt_tmp->sub_join().get();
   }
-  condition_tmp->filter_units().swap(filter_units_tmp);
-  join_stmt.get()->condition() = condition_tmp;
+  if (!filter_units_tmp.empty()) {
+    condition_tmp->filter_units().swap(filter_units_tmp);
+    join_stmt.get()->condition() = condition_tmp;
+  }
 
   // collect query fields in `select` statement
   std::vector<Field> query_fields;

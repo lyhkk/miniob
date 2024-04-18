@@ -465,15 +465,15 @@ select_stmt:        /*  select 语句的语法解析树*/
         delete $2;
       }
       
-      JoinTableSqlNode joinTable;
-      joinTable.relation_name = $4;
+      JoinTableSqlNode *joinTable = new JoinTableSqlNode();
+      joinTable->relation_name = $4;
       if ($5 != nullptr) {
-        joinTable.alias_name = $5;
+        joinTable->alias_name = $5;
       }
       if ($6 != nullptr) {
-        joinTable.sub_join = $6;
+        joinTable->sub_join = $6;
       } 
-      $$->selection.table = &joinTable;
+      $$->selection.table = joinTable;
 
       if ($7 != nullptr) {
         $$->selection.conditions.swap(*$7);
@@ -535,8 +535,10 @@ join_table_inner:
       if ($4 != nullptr) {
         $$->alias_name = $4;
       }
-      $$->join_condition.swap(*$5);
-      delete($5);
+      if ($5 != nullptr) {
+        $$->join_condition.swap(*$5);
+        delete($5);
+      }
     }
     | INNER JOIN ID as_info join_on join_table_inner
     {
@@ -546,15 +548,17 @@ join_table_inner:
       if ($4 != nullptr) {
         $$->alias_name = $4;
       }
-      $$->join_condition.swap(*$5);
-      delete($5);
+      if ($5 != nullptr) {
+        $$->join_condition.swap(*$5);
+        delete($5);
+      }
       $$->sub_join = $6;
     }
     ;
 
 join_on:
     {
-
+      $$ = nullptr;
     }
     | ON condition_list
     {
@@ -636,21 +640,15 @@ select_attr:
     ;
 
 rel_attr:
-    ID as_info {
+    ID {
       $$ = new RelAttrSqlNode;
       $$->attribute_name = $1;
-      if ($2 != nullptr) {
-        $$->alias_name = $2;
-      }
       free($1);
     }
-    | ID DOT ID as_info {
+    | ID DOT ID {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
-      if ($4 != nullptr) {
-        $$->alias_name = $4;
-      }
       free($1);
       free($3);
     }
