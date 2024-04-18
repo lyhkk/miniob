@@ -82,12 +82,12 @@ RecordPageHandler::~RecordPageHandler() { cleanup(); }
 RC RecordPageHandler::init(DiskBufferPool &buffer_pool, PageNum page_num, bool readonly)
 {
   if (disk_buffer_pool_ != nullptr) {
-    if (frame_->page_num() == page_num) {
-      LOG_WARN("Disk buffer pool has been opened for page_num %d.", page_num);
+    //if (frame_->page_num() == page_num) {
+      //LOG_WARN("Disk buffer pool has been opened for page_num %d.", page_num);
       return RC::RECORD_OPENNED;
-    } else {
-      cleanup();
-    }
+    //} else {
+      //cleanup();
+    //}
   }
 
   RC ret = RC::SUCCESS;
@@ -276,6 +276,30 @@ RC RecordPageHandler::get_record(const RID *rid, Record *rec)
 
   rec->set_rid(*rid);
   rec->set_data(get_record_data(rid->slot_num), page_header_->record_real_size);
+  return RC::SUCCESS;
+}
+
+RC RecordPageHandler::update_record(Record *rec)
+{
+  ASSERT(readonly_ == false, "cannot update record into page while the page is readonly");
+
+  if(rec->rid().slot_num >= page_header_->record_capacity)
+  {
+    LOG_ERROR("Invalid slot_num %d, exceed page's record capacity, page_num %d.", rec->rid().slot_num, frame_->page_num());
+    return RC::INVALID_ARGUMENT;
+  }
+
+  Bitmap bitmap(bitmap_, page_header_->record_capacity);
+  if(!bitmap.get_bit(rec->rid().slot_num)){
+    LOG_ERROR("Invalid slot_num %d, slot is empty, page_num %d.", rec->rid().slot_num, frame_->page_num());
+    return RC::RECORD_OF_RECORD_NOT_EXIST;
+  }
+  
+  //更新记录
+  char *record_data = get_record_data(rec->rid().slot_num);
+  memcpy(record_data, rec->data(), page_header_->record_real_size);
+  bitmap.set_bit(rec->rid().slot_num);
+  frame_->mark_dirty();
   return RC::SUCCESS;
 }
 
@@ -488,6 +512,21 @@ RC RecordFileHandler::visit_record(const RID &rid, bool readonly, std::function<
 
   visitor(record);
   return rc;
+}
+
+RC RecordFileHandler::update_record(Record *rec)
+{
+  RC rc = RC::SUCCESS;
+
+  RecordPageHandler record_page_handler;
+
+  rc = record_page_handler.init(*disk_buffer_pool_, rec->rid().page_num, false);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to init record page handler. page num=%d, rc=%s", rec->rid().page_num, strrc(rc));
+    return rc;
+  }
+
+  return record_page_handler.update_record(rec);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

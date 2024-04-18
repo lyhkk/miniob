@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <memory>
 
@@ -37,7 +38,28 @@ struct RelAttrSqlNode
 {
   std::string relation_name;   ///< relation name (may be NULL) 表名
   std::string attribute_name;  ///< attribute name              属性名
-  std::string alias_name;      ///< 属性别名
+  int is_length_func;          ///< 是否是长度函数
+  int is_round_func;           ///< 是否是round函数
+  std::string date_format;     ///< 是否是date_format函数
+  int round_num;               ///< round函数的参数
+  std::string function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
+  std::string alias_name;      ///< 别名
+  AggregateType aggregate_type;///< 聚合函数类型
+
+  RelAttrSqlNode () : aggregate_type(AggregateType::NONE) {}
+  AttrType get_func_attr_type(AttrType type) const { // function功能，需要修改type
+    if (is_length_func == 1) {
+      return AttrType::INTS;
+    } else if (is_round_func == 1 && round_num <= 0) {
+      return AttrType::INTS;
+    } else if (is_round_func == 1 && round_num > 0) {
+      return AttrType::FLOATS;
+    }
+    else if (date_format != "") {
+      return AttrType::CHARS;
+    }
+    return type;
+  }
 };
 
 /**
@@ -52,8 +74,8 @@ enum CompOp
   LESS_THAN,    ///< "<"
   GREAT_EQUAL,  ///< ">="
   GREAT_THAN,   ///< ">"
-  LIKE_OP,      ///< "LIKE"
-  NOT_LIKE_OP,  ///< "NOT LIKE"
+  LIKE_OP,         ///< "LIKE"
+  NOT_LIKE_OP,     ///< "NOT LIKE"
   NO_OP
 };
 
@@ -147,8 +169,8 @@ struct DeleteSqlNode
 struct UpdateSqlNode
 {
   std::string                   relation_name;   ///< Relation to update
-  std::string                   attribute_name;  ///< 更新的字段，仅支持一个字段
-  Value                         value;           ///< 更新的值，仅支持一个字段
+  std::string                   attribute_name;  ///< 更新的字段
+  Value                         value;           ///< 更新的值
   std::vector<ConditionSqlNode> conditions;
 };
 

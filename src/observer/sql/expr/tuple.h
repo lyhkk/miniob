@@ -52,8 +52,12 @@ class TupleSchema
 {
 public:
   void append_cell(const TupleCellSpec &cell) { cells_.push_back(cell); }
-  void append_cell(const char *table, const char *field) { append_cell(TupleCellSpec(table, field)); }
-  void append_cell(const char *alias) { append_cell(TupleCellSpec(alias)); }
+  void append_cell(const char *table, const char *field, int is_length_func, int is_round_func, int round_num, const char *date_format, AggregateType aggregate_type) { 
+    append_cell(TupleCellSpec(table, field, nullptr, is_length_func, is_round_func, round_num, date_format, aggregate_type)); 
+  }
+  void append_cell(const char *alias, int is_length_func, int is_round_func, int round_num, const char* date_format, AggregateType aggregate_type) {
+    append_cell(TupleCellSpec(alias, is_length_func, is_round_func, round_num, date_format, aggregate_type)); 
+  }
   int  cell_num() const { return static_cast<int>(cells_.size()); }
 
   const TupleCellSpec &cell_at(int i) const { return cells_[i]; }
@@ -93,7 +97,6 @@ public:
    * @param[out] cell 返回的cell
    */
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
-
   virtual std::string to_string() const
   {
     std::string str;
@@ -155,9 +158,14 @@ public:
     }
 
     FieldExpr       *field_expr = speces_[index];
-    const FieldMeta *field_meta = field_expr->field().meta();
+    Field            field = field_expr->field();
+    const FieldMeta *field_meta = field.meta();
+    //AttrType         field_type = field.get_function_type();
+
     cell.set_type(field_meta->type());
     cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+    field.function_data(cell);
+    cell.aggregate_type_ = field.aggregate_type_;
     return RC::SUCCESS;
   }
 
@@ -170,8 +178,13 @@ public:
     }
 
     for (size_t i = 0; i < speces_.size(); ++i) {
-      const FieldExpr *field_expr = speces_[i];
-      const Field     &field      = field_expr->field();
+      FieldExpr       *field_expr = speces_[i];
+      Field            field      = field_expr->field();
+      field_expr->field().is_length_func_ = spec.is_length_func_;
+      field_expr->field().is_round_func_ = spec.is_round_func_;
+      field_expr->field().round_num_ = spec.round_num_;
+      field_expr->field().date_format_ = spec.date_format_;
+      field_expr->field().aggregate_type_ = spec.aggregate_type_;
       if (0 == strcmp(field_name, field.field_name())) {
         return cell_at(i, cell);
       }

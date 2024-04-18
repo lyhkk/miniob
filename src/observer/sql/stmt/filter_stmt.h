@@ -29,7 +29,7 @@ struct FilterObj
   bool  is_attr;
   Field field;
   Value value;
-
+  
   void init_attr(const Field &field)
   {
     is_attr     = true;

@@ -183,3 +183,11 @@ RC CliCommunicator::write_result(SessionEvent *event, bool &need_disconnect)
   need_disconnect = false;
   return rc;
 }
+
+RC CliCommunicator::write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect)
+{
+  RC rc = PlainCommunicator::write_function_value(sql_event, need_disconnect);
+
+  need_disconnect = false;
+  return rc;
+}

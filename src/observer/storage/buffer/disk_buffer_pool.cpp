@@ -107,7 +107,8 @@ Frame *BPFrameManager::get(int file_desc, PageNum page_num)
 
 Frame *BPFrameManager::get_internal(const FrameId &frame_id)
 {
-  Frame *frame = nullptr;
+  Frame *
+  frame = nullptr;
   (void)frames_.get(frame_id, frame);
   if (frame != nullptr) {
     frame->pin();

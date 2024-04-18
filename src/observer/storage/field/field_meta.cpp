@@ -16,8 +16,11 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/log/log.h"
 #include "sql/parser/parse_defs.h"
+#include "sql/parser/value.h"
 
 #include "json/json.h"
+#include <ctime>
+#include <string>
 
 const static Json::StaticString FIELD_NAME("name");
 const static Json::StaticString FIELD_TYPE("type");
@@ -33,7 +36,7 @@ FieldMeta::FieldMeta(const char *name, AttrType attr_type, int attr_offset, int 
   ASSERT(rc == RC::SUCCESS, "failed to init field meta. rc=%s", strrc(rc));
 }
 
-RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible)
+RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible) 
 {
   if (common::is_blank(name)) {
     LOG_WARN("Name cannot be empty");
@@ -69,7 +72,7 @@ bool FieldMeta::visible() const { return visible_; }
 void FieldMeta::desc(std::ostream &os) const
 {
   os << "field name=" << name_ << ", type=" << attr_type_to_string(attr_type_) << ", len=" << attr_len_
-     << ", visible=" << (visible_ ? "yes" : "no");
+    << ", visible=" << (visible_ ? "yes" : "no");
 }
 
 void FieldMeta::to_json(Json::Value &json_value) const

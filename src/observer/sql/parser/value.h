@@ -14,7 +14,9 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <cstddef>
 #include <string>
+
 
 /**
  * @brief 属性的类型
@@ -29,6 +31,21 @@ enum AttrType
   FLOATS,    ///< 浮点数类型(4字节)
   BOOLEANS,  ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };
+
+/**
+ * @brief 属性使用的聚合函数类型
+ *
+ */
+enum class AggregateType {
+  COUNT,
+  COUNT_STAR,
+  SUM,
+  AVG,
+  MAX,
+  MIN,
+  NONE
+};
+
 
 const char *attr_type_to_string(AttrType type);
 AttrType    attr_type_from_string(const char *s);
@@ -65,6 +82,7 @@ public:
   void invalid_date();
 
   std::string to_string() const;
+  std::string function_data(const char *date_format = nullptr); // 只用于function题目中，不查表只计算的情况下，返回数据
 
   int compare(const Value &other) const;
   int like_type_compare(const Value &other) const;
@@ -83,7 +101,16 @@ public:
   float       get_float() const;
   std::string get_string() const;
   bool        get_boolean() const;
-  int         undefined_value();
+  int         undefined_value(); // date类型数据如果invalid，通过这个接口传回1/0，表示是否有效
+
+public:
+  // 为了支持function功能下，置位value后，重新恢复内存中的value
+  int is_length_func_;
+  int is_round_func_;
+  int round_num_;
+  int is_date_format_func_;
+  AggregateType aggregate_type_;
+
 
 private:
   AttrType attr_type_ = UNDEFINED;

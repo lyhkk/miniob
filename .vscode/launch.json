@@ -33,6 +33,7 @@
                 }
             ],
             // "preLaunchTask": "CMake Build"
+            ]
         }
     ]
 }

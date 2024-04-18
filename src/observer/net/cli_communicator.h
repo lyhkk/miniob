@@ -31,6 +31,7 @@ public:
   RC init(int fd, Session *session, const std::string &addr) override;
   RC read_event(SessionEvent *&event) override;
   RC write_result(SessionEvent *event, bool &need_disconnect) override;
+  RC write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) override;
 
   bool exit() const { return exit_; }
 
