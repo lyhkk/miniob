@@ -16,8 +16,10 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "common/rc.h"
+#include "storage/field/field.h"
 
 class Stmt;
 class CalcStmt;
@@ -28,6 +30,7 @@ class DeleteStmt;
 class ExplainStmt;
 class UpdateStmt;
 class LogicalOperator;
+class JoinStmt;
 
 class LogicalPlanGenerator
 {
@@ -39,10 +42,12 @@ public:
 
 private:
   RC create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
-  RC create_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  RC create_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator, bool readonly = true);
   RC create_plan(FilterStmt *filter_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   RC create_plan(InsertStmt *insert_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   RC create_plan(DeleteStmt *delete_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   RC create_plan(ExplainStmt *explain_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   RC create_plan(UpdateStmt *update_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  RC create_plan(JoinStmt *join_stmt, const std::vector<Field> &fields,
+      std::unique_ptr<LogicalOperator> &logical_operator, bool readonly);
 };
