@@ -36,26 +36,26 @@ class Expression;
  */
 struct RelAttrSqlNode
 {
-  std::string relation_name;   ///< relation name (may be NULL) 表名
-  std::string attribute_name;  ///< attribute name              属性名
-  int is_length_func;          ///< 是否是长度函数
-  int is_round_func;           ///< 是否是round函数
-  std::string date_format;     ///< 是否是date_format函数
-  int round_num;               ///< round函数的参数
-  std::string function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
-  std::string alias_name;      ///< 别名
-  AggregateType aggregate_type;///< 聚合函数类型
+  std::string   relation_name;   ///< relation name (may be NULL) 表名
+  std::string   attribute_name;  ///< attribute name              属性名
+  int           is_length_func;  ///< 是否是长度函数
+  int           is_round_func;   ///< 是否是round函数
+  std::string   date_format;     ///< 是否是date_format函数
+  int           round_num;       ///< round函数的参数
+  std::string   function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
+  std::string   alias_name;      ///< 别名
+  AggregateType aggregate_type;  ///< 聚合函数类型
 
-  RelAttrSqlNode () : aggregate_type(AggregateType::NONE) {}
-  AttrType get_func_attr_type(AttrType type) const { // function功能，需要修改type
+  RelAttrSqlNode() : aggregate_type(AggregateType::NONE) {}
+  AttrType get_func_attr_type(AttrType type) const
+  {  // function功能，需要修改type
     if (is_length_func == 1) {
       return AttrType::INTS;
     } else if (is_round_func == 1 && round_num <= 0) {
       return AttrType::INTS;
     } else if (is_round_func == 1 && round_num > 0) {
       return AttrType::FLOATS;
-    }
-    else if (date_format != "") {
+    } else if (date_format != "") {
       return AttrType::CHARS;
     }
     return type;
@@ -74,8 +74,8 @@ enum CompOp
   LESS_THAN,    ///< "<"
   GREAT_EQUAL,  ///< ">="
   GREAT_THAN,   ///< ">"
-  LIKE_OP,         ///< "LIKE"
-  NOT_LIKE_OP,     ///< "NOT LIKE"
+  LIKE_OP,      ///< "LIKE"
+  NOT_LIKE_OP,  ///< "NOT LIKE"
   NO_OP
 };
 
@@ -101,6 +101,18 @@ struct ConditionSqlNode
 };
 
 /**
+ * @brief 描述一个表
+ * @details 查询的表
+ */
+struct JoinTableSqlNode
+{
+  std::string                   relation_name;       ///< 表名
+  std::string                   alias_name;          ///< 表的别名
+  JoinTableSqlNode             *sub_join = nullptr;  ///< 下一张表
+  std::vector<ConditionSqlNode> join_condition;      ///< on条件
+};
+
+/**
  * @brief 描述一个select语句
  * @ingroup SQLParser
  * @details 一个正常的select语句描述起来比这个要复杂很多，这里做了简化。
@@ -114,7 +126,7 @@ struct ConditionSqlNode
 struct SelectSqlNode
 {
   std::vector<RelAttrSqlNode>   attributes;  ///< attributes in select clause
-  std::vector<std::string>      relations;   ///< 查询的表
+  JoinTableSqlNode             *table;       ///< 查询的表
   std::vector<ConditionSqlNode> conditions;  ///< 查询条件，使用AND串联起来多个条件
 };
 

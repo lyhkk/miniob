@@ -103,6 +103,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         DATA
         INFILE
         EXPLAIN
+        INNER
+        JOIN
         EQ
         LT
         GT
@@ -125,7 +127,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   std::vector<Value> *              value_list;
   std::vector<ConditionSqlNode> *   condition_list;
   std::vector<RelAttrSqlNode> *     rel_attr_list;
-  std::vector<std::string> *        relation_list;
+  JoinTableSqlNode *                relation_list;
   char *                            string;
   int                               number;
   float                             floats;
@@ -155,7 +157,12 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <rel_attr_list>       select_attr
 %type <rel_attr_list>       select_func_imm_attr
 %type <relation_list>       rel_list
+%type <relation_list>       from
+%type <relation_list>       join_table
+%type <relation_list>       join_table_inner
+%type <condition_list>      join_on
 %type <rel_attr_list>       attr_list
+%type <string>              as_info 
 %type <rel_attr_list>       func_imm_list
 %type <expression>          expression
 %type <expression_list>     expression_list
@@ -450,23 +457,27 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT select_attr FROM ID rel_list where
+    SELECT select_attr FROM ID as_info rel_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
         $$->selection.attributes.swap(*$2);
         delete $2;
       }
+      
+      JoinTableSqlNode joinTable;
+      joinTable.relation_name = $4;
       if ($5 != nullptr) {
-        $$->selection.relations.swap(*$5);
-        delete $5;
+        joinTable.alias_name = $5;
       }
-      $$->selection.relations.push_back($4);
-      std::reverse($$->selection.relations.begin(), $$->selection.relations.end());
-
       if ($6 != nullptr) {
-        $$->selection.conditions.swap(*$6);
-        delete $6;
+        joinTable.sub_join = $6;
+      } 
+      $$->selection.table = &joinTable;
+
+      if ($7 != nullptr) {
+        $$->selection.conditions.swap(*$7);
+        delete $7;
       }
       free($4);
     }
@@ -476,7 +487,81 @@ select_stmt:        /*  select 语句的语法解析树*/
       $$->selection.attributes.swap(*$2);
       delete $2;
     }
+    | SELECT select_attr from where
+    {
+      $$ = new ParsedSqlNode(SCF_SELECT);
+      if ($2 != nullptr) {
+        $$->selection.attributes.swap(*$2);
+        delete $2;
+      }
+
+      $$->selection.table = $3;
+
+      if ($4 != nullptr) {
+        $$->selection.conditions.swap(*$4);
+        delete $4;
+      }
+    }
     ;
+
+from: 
+    FROM rel_list 
+    {
+      $$ = $2;
+    }
+    | FROM join_table
+    {
+      $$ = $2;
+    }
+
+join_table:
+    ID as_info join_table_inner
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $1;
+      free($1);
+      if ($2 != nullptr) {
+        $$->alias_name = $2;
+      }
+      $$->sub_join = $3;
+    }
+
+join_table_inner:
+    INNER JOIN ID as_info join_on
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $3;
+      free($3);
+      if ($4 != nullptr) {
+        $$->alias_name = $4;
+      }
+      $$->join_condition.swap(*$5);
+      delete($5);
+    }
+    | INNER JOIN ID as_info join_on join_table_inner
+    {
+      $$ = new JoinTableSqlNode;
+      $$->relation_name = $3;
+      free($3);
+      if ($4 != nullptr) {
+        $$->alias_name = $4;
+      }
+      $$->join_condition.swap(*$5);
+      delete($5);
+      $$->sub_join = $6;
+    }
+    ;
+
+join_on:
+    {
+
+    }
+    | ON condition_list
+    {
+      $$ = $2;
+    }
+    ;
+
 calc_stmt:
     CALC expression_list
     {
@@ -551,15 +636,21 @@ select_attr:
     ;
 
 rel_attr:
-    ID {
+    ID as_info {
       $$ = new RelAttrSqlNode;
       $$->attribute_name = $1;
+      if ($2 != nullptr) {
+        $$->alias_name = $2;
+      }
       free($1);
     }
-    | ID DOT ID {
+    | ID DOT ID as_info {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
+      if ($4 != nullptr) {
+        $$->alias_name = $4;
+      }
       free($1);
       free($3);
     }
@@ -740,20 +831,32 @@ attr_list:
     }
     ;
 
+as_info:
+    {
+      $$ = nullptr;
+    }
+    | ID {
+      $$ = $1;
+    }
+    | AS ID {
+      $$ = $2;
+    }
+    ;
+
 rel_list:
     /* empty */
     {
       $$ = nullptr;
     }
-    | COMMA ID rel_list {
-      if ($3 != nullptr) {
-        $$ = $3;
-      } else {
-        $$ = new std::vector<std::string>;
+    | COMMA ID as_info rel_list {
+      $$ = new JoinTableSqlNode;
+      if ($4 != nullptr) {
+        $$->sub_join = $4;
       }
-
-      $$->push_back($2);
-      free($2);
+      $$->relation_name = $2;
+      if ($3 != nullptr) {
+        $$->alias_name = $3;
+      }
     }
     ;
 where:
