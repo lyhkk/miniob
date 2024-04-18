@@ -21,7 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include <regex>
 #include <cmath>
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates","ints", "floats", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates", "ints", "floats", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -40,17 +40,18 @@ AttrType attr_type_from_string(const char *s)
   return UNDEFINED;
 }
 
-Value::Value(int val) { set_int(val);}
+Value::Value(int val) { set_int(val); }
 
 Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
 
-Value::Value(const char *s, int len /*= 0*/) {
-  int y, m, d;
-  char *p = (char *)s;
+Value::Value(const char *s, int len /*= 0*/)
+{
+  int        y, m, d;
+  char      *p = (char *)s;
   std::regex pattern("\\d+-\\d+-\\d+");
-  if( std::regex_match(p, pattern) ) {
+  if (std::regex_match(p, pattern)) {
     sscanf(p, "%d-%d-%d", &y, &m, &d);
     if (!check_date(y, m, d)) {
       invalid_date();
@@ -59,23 +60,21 @@ Value::Value(const char *s, int len /*= 0*/) {
     set_date(10000 * y + 100 * m + d);
   } else {
     set_string(s, len);
-  } 
+  }
 }
 
 void Value::invalid_date()
 {
-  attr_type_ = UNDEFINED;
+  attr_type_            = UNDEFINED;
   num_value_.int_value_ = -1;
-  length_ = -1;
+  length_               = -1;
 }
 
 bool Value::check_date(int y, int m, int d)
 {
-    static int mon[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    bool leap = (y%400==0 || (y%100 && y%4==0));
-    return y > 0
-        && (m > 0)&&(m <= 12)
-        && (d > 0)&&(d <= ((m==2 && leap)?1:0) + mon[m]);
+  static int mon[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  bool       leap  = (y % 400 == 0 || (y % 100 && y % 4 == 0));
+  return y > 0 && (m > 0) && (m <= 12) && (d > 0) && (d <= ((m == 2 && leap) ? 1 : 0) + mon[m]);
 }
 
 void Value::set_data(char *data, int length)
@@ -89,7 +88,7 @@ void Value::set_data(char *data, int length)
       length_               = length;
     } break;
     case DATES: {
-      int ymd = *(int*)data;
+      int ymd               = *(int *)data;
       num_value_.int_value_ = ymd;
       length_               = length;
     } break;
@@ -203,11 +202,11 @@ std::string Value::to_string() const
       int y = num_value_.int_value_ / 10000;
       int m = (num_value_.int_value_ % 10000) / 100;
       int d = num_value_.int_value_ % 100;
-      if (m > 0 && m < 10) 
+      if (m > 0 && m < 10)
         os << y << "-0" << m << "-";
-      else 
+      else
         os << y << "-" << m << "-";
-      if (d > 0 && d < 10) 
+      if (d > 0 && d < 10)
         os << "0" << d;
       else
         os << d;
@@ -277,6 +276,12 @@ int Value::compare(const Value &other) const
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == INTS) {
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
+  } else if (this->attr_type_ == FLOATS && other.attr_type_ == CHARS) {
+    float other_data = stof(other.str_value_);
+    return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
+  } else if (this->attr_type_ == CHARS && other.attr_type_ == FLOATS) {
+    float this_data = stof(this->str_value_);
+    return common::compare_float((void *)&this_data, (void *)&other.num_value_.float_value_);
   }
   LOG_WARN("not supported");
   return -1;  // TODO return rc?
@@ -388,45 +393,42 @@ bool Value::get_boolean() const
   return false;
 }
 
-std::string Value::function_data(const char *date_format) {
+std::string Value::function_data(const char *date_format)
+{
   if (is_length_func_ == 1) {
     std::string temp = get_string();
     set_int(temp.size());
     is_length_func_ = 0;
     return to_string();
-  } 
-  else if (is_round_func_ == 1) {
+  } else if (is_round_func_ == 1) {
     float value = get_float();
     // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
     float temp = value * std::pow(10, round_num_);
-    temp = std::round(temp);
-    temp = temp / std::pow(10, round_num_);
+    temp       = std::round(temp);
+    temp       = temp / std::pow(10, round_num_);
     if (round_num_ <= 0) {
       set_int(temp);
-    }
-    else {
+    } else {
       set_float(temp);
     }
     is_round_func_ = 0;
     return to_string();
-  } 
-  else if (is_date_format_func_ == 1) {
-    std::string date_format_ = date_format;
-    int date = get_int();
-    std::string date_str = std::to_string(date);
+  } else if (is_date_format_func_ == 1) {
+    std::string       date_format_ = date_format;
+    int               date         = get_int();
+    std::string       date_str     = std::to_string(date);
     std::stringstream ss(date_str);
-    tm tm = {};
-    char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
+    tm                tm             = {};
+    char             *formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
     if (formatted_date == NULL) {
-      LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
-    }
-    else {
+      LOG_INFO("A weird date. date=%s", date_str.c_str());  // 理论上不会出现这种情况，为了完整性
+    } else {
       char buffer[80];
       strftime(buffer, 80, date_format_.c_str(), &tm);
       set_string(buffer);
       is_date_format_func_ = 0;
       return to_string();
     }
-  } 
+  }
   return "";
 }
