@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/optimizer/logical_plan_generator.h"
 
 #include <common/log/log.h>
+#include <memory>
 
 #include "sql/operator/calc_logical_operator.h"
 #include "sql/operator/delete_logical_operator.h"
@@ -96,12 +97,12 @@ RC LogicalPlanGenerator::create_plan(JoinStmt *join_stmt, const std::vector<Fiel
 {
   unique_ptr<LogicalOperator> table_oper;
   Table                      *table = join_stmt->table();
-  vector<Field>               current_fields;
-  for (auto field : fields) {
-    if (strcmp(table->name(), field.table_name()) == 0) {
-      current_fields.push_back(field);
-    }
-  }
+  // vector<Field>               current_fields;
+  // for (auto field : fields) {
+  //   if (strcmp(table->name(), field.table_name()) == 0) {
+  //     current_fields.push_back(field);
+  //   }
+  // }
 
   unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, fields, readonly /*readonly*/));
   table_oper = std::move(table_get_oper);
@@ -138,10 +139,13 @@ RC LogicalPlanGenerator::create_plan(
     SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator, bool readonly)
 {
   unique_ptr<LogicalOperator> table_oper(nullptr);
+  std::vector<unique_ptr<Expression>> &projects = select_stmt->projects();
 
   // const std::vector<Table *> &tables     = select_stmt->tables();
-  const std::vector<Field> &all_fields = select_stmt->query_fields();
+  // const std::vector<Field> &all_fields = select_stmt->query_fields();
 
+  // 目前不需要all_fields在TableGetLogicalOperator
+  std::vector<Field> all_fields;
   RC rc = RC::SUCCESS;
   if (select_stmt->join_stmt()) {
     JoinStmt *join_stmt = static_cast<JoinStmt *>(select_stmt->join_stmt().get());
@@ -159,7 +163,7 @@ RC LogicalPlanGenerator::create_plan(
     return rc;
   }
 
-  unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(all_fields));
+  unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(projects));
   if (predicate_oper) {
     if (table_oper) {
       predicate_oper->add_child(std::move(table_oper));
@@ -178,23 +182,10 @@ RC LogicalPlanGenerator::create_plan(
 RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
   std::vector<unique_ptr<Expression>> cmp_exprs;
-  const std::vector<FilterUnit *>    &filter_units = filter_stmt->filter_units();
-  for (const FilterUnit *filter_unit : filter_units) {
-    const FilterObj &filter_obj_left  = filter_unit->left();
-    const FilterObj &filter_obj_right = filter_unit->right();
-
-    unique_ptr<Expression> left(filter_obj_left.is_attr
-                                    ? static_cast<Expression *>(new FieldExpr(filter_obj_left.field))
-                                    : static_cast<Expression *>(new ValueExpr(filter_obj_left.value)));
-
-    unique_ptr<Expression> right(filter_obj_right.is_attr
-                                     ? static_cast<Expression *>(new FieldExpr(filter_obj_right.field))
-                                     : static_cast<Expression *>(new ValueExpr(filter_obj_right.value)));
-
-    ComparisonExpr *cmp_expr = new ComparisonExpr(filter_unit->comp(), std::move(left), std::move(right));
-    cmp_exprs.emplace_back(cmp_expr);
+  if (filter_stmt == nullptr || filter_stmt->condition() == nullptr) {
+    return RC::SUCCESS;
   }
-
+  cmp_exprs.emplace_back(std::move(filter_stmt->condition()));
   unique_ptr<PredicateLogicalOperator> predicate_oper;
   if (!cmp_exprs.empty()) {
     unique_ptr<ConjunctionExpr> conjunction_expr(new ConjunctionExpr(ConjunctionExpr::Type::AND, cmp_exprs));

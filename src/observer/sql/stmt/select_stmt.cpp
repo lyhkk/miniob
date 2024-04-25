@@ -20,6 +20,9 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
+#include <memory>
+#include <type_traits>
+#include <vector>
 
 SelectStmt::~SelectStmt()
 {
@@ -29,31 +32,41 @@ SelectStmt::~SelectStmt()
   }
 }
 
-static RC wildcard_fields(Table *table, std::vector<Field> &field_metas, RelAttrSqlNode relation_attr)
+static void wildcard_fields(Table *table, std::vector<std::unique_ptr<Expression>> &projects_exprs_, bool is_single_table)
 {
   const TableMeta &table_meta = table->table_meta();
   const int        field_num  = table_meta.field_num();
   for (int i = table_meta.sys_field_num(); i < field_num; i++) {
-    int           is_length_func = relation_attr.is_length_func;
-    int           is_round_func  = relation_attr.is_round_func;
-    std::string   date_format    = relation_attr.date_format;
-    int           round_num      = relation_attr.round_num;
-    AggregateType aggregate_type = relation_attr.aggregate_type;
+    const FieldMeta* field_meta = table_meta.field(i);
+    if (field_meta->visible()) {
+      FieldExpr *tmp = new FieldExpr(table, field_meta);
+      if (is_single_table) {
+        tmp->set_name(tmp->field_name());
+      } else {
+        tmp->set_name(std::string(tmp->table_name()) + "." + tmp->field_name());
+      }
+      projects_exprs_.emplace_back(tmp);
+    }
+    // int           is_length_func = relation_attr.is_length_func;
+    // int           is_round_func  = relation_attr.is_round_func;
+    // std::string   date_format    = relation_attr.date_format;
+    // int           round_num      = relation_attr.round_num;
+    // AggregateType aggregate_type = relation_attr.aggregate_type;
     // aggregation function: 只有count可以做count(*)
-    if (aggregate_type != AggregateType::NONE && aggregate_type != AggregateType::COUNT_STAR) {
-      LOG_WARN("invalid query field. The aggregate function cannot receive more than one field.");
-      return RC::SCHEMA_FIELD_MISSING;
-    }
-    field_metas.push_back(
-        Field(table, table_meta.field(i), is_length_func, is_round_func, round_num, date_format, aggregate_type));
-    if (aggregate_type == AggregateType::COUNT_STAR) {
-      break;
-    }
+    // if (aggregate_type != AggregateType::NONE && aggregate_type != AggregateType::COUNT_STAR) {
+    //   LOG_WARN("invalid query field. The aggregate function cannot receive more than one field.");
+    //   return RC::SCHEMA_FIELD_MISSING;
+    // }
+    // field_metas.push_back(
+    //     Field(table, table_meta.field(i), is_length_func, is_round_func, round_num, date_format, aggregate_type));
+    // if (aggregate_type == AggregateType::COUNT_STAR) {
+    //   break;
+    // }
   }
-  return RC::SUCCESS;
+  return;
 }
 
-RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 {
   if (nullptr == db) {
     LOG_WARN("invalid argument. db is null");
@@ -77,59 +90,67 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
     join_stmt.reset(join);
   }
 
-  JoinStmt                 *join_stmt_tmp = join_stmt.get();
-  FilterStmt               *condition_tmp = new FilterStmt();
-  std::vector<FilterUnit *> filter_units_tmp;
-  while (join_stmt_tmp != nullptr) {
-    if (join_stmt_tmp->condition() != nullptr) {
-      for (FilterUnit *fu : join_stmt_tmp->condition()->filter_units()) {
-        filter_units_tmp.push_back(fu);
-      }
-      join_stmt_tmp->condition() = nullptr;
-    }
-    join_stmt_tmp = join_stmt_tmp->sub_join().get();
+  // TODO： join_stmt的condition合并->为ConjunctionExpr
+  // JoinStmt                 *join_stmt_tmp = join_stmt.get();
+  // JoinStmt                 *sub_join_tmp  = nullptr;
+  // FilterStmt               *condition_tmp = new FilterStmt();
+  // std::vector<FilterUnit *> filter_units_tmp;
+  // while (join_stmt_tmp != nullptr) {
+  //   sub_join_tmp = join_stmt_tmp->sub_join().get();
+  //   if (sub_join_tmp == nullptr)  break;
+  //   if (join_stmt_tmp->condition() != nullptr && sub_join_tmp->condition() != nullptr) {
+  //     condition_tmp->condition() = new ConjunctionExpr(ConjunctionExpr::Type::AND, expr, expr2);
+  //     join_stmt_tmp->condition() = nullptr;
+  //   }
+  //   join_stmt_tmp = sub_join_tmp;
+    // join_stmt_tmp = join_stmt_tmp->sub_join().get();
+  // }
+  // if (!filter_units_tmp.empty()) {
+  //   condition_tmp->filter_units().swap(filter_units_tmp);
+  //   join_stmt.get()->condition() = condition_tmp;
+  // }
+
+  bool is_single_table = (tables.size() == 1);
+  Table *default_table = nullptr;
+  if (is_single_table) {
+    default_table = tables[0];
   }
-  if (!filter_units_tmp.empty()) {
-    condition_tmp->filter_units().swap(filter_units_tmp);
-    join_stmt.get()->condition() = condition_tmp;
-  }
-
-  // collect query fields in `select` statement
-  std::vector<Field> query_fields;
-  for (int i = static_cast<int>(select_sql.attributes.size()) - 1; i >= 0; i--) {
-    const RelAttrSqlNode &relation_attr = select_sql.attributes[i];
-
-    // aggregation function: 对于count(a, b)和count()这种聚合函数调用的方法, 就要报错 -> Failure
-    if (0 == strcmp(relation_attr.attribute_name.c_str(), "*") &&
-        0 == strcmp(relation_attr.relation_name.c_str(), "*")) {
-      LOG_WARN("invalid query field. The aggregate function cannot receive more than one field.");
-      return RC::SCHEMA_FIELD_MISSING;
-    }
-
-    if (common::is_blank(relation_attr.relation_name.c_str()) &&
-        0 == strcmp(relation_attr.attribute_name.c_str(), "*")) {
-      for (Table *table : tables) {
-        if (wildcard_fields(table, query_fields, relation_attr) != RC::SUCCESS) {
+  // projection in `select` statement
+  std::vector<std::unique_ptr<Expression>> projects_query;
+  for (int i = 0; i < static_cast<int>(select_sql.proj_exprs.size()); i++) {
+    Expression *expr = select_sql.proj_exprs[i];
+    auto check_project_expr = [&table_map, &tables, &default_table](Expression *expr) -> RC {
+      // TODO add check for project expression
+      /* aggregation function: 对于count(a, b)和count()这种聚合函数调用的方法, 就要报错 -> Failure
+      * aggregation function: 对于count(*) 的特判，因为其它两个不支持
+      * function_type和aggregate_type的检查
+      * Aggregate function: select id, max(age) from student 这种混合使用是不考虑的
+      */
+      if (expr->type() == ExprType::FIELD) {
+        FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
+        if (field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
           return RC::SCHEMA_FIELD_MISSING;
         }
       }
-    } else if (!common::is_blank(relation_attr.relation_name.c_str())) {
-      const char *table_name = relation_attr.relation_name.c_str();
-      const char *field_name = relation_attr.attribute_name.c_str();
+      return RC::SUCCESS;
+    };
 
-      if (0 == strcmp(table_name, "*")) {
-        if (0 != strcmp(field_name, "*")) {
-          LOG_WARN("invalid field name while table is *. attr=%s", field_name);
-          return RC::SCHEMA_FIELD_MISSING;
+    ExprType expr_type = expr->type();
+    if (expr_type == ExprType::FIELD) {
+      FieldExpr  *field_expr = static_cast<FieldExpr*>(expr);
+      const char *table_name = field_expr->table_name();
+      const char *field_name = field_expr->field_name();
+      ASSERT(!common::is_blank(field_name), "Parse ERROR!");
+
+      if (0 == strcmp(table_name, "*") && 0 == strcmp(field_name, "*")) {
+        if (tables.empty() || !field_expr->alias().empty()) {
+          return RC::INVALID_ARGUMENT; // not allow: select *; select * as xxx;
         }
         for (Table *table : tables) {
-          if (wildcard_fields(table, query_fields, relation_attr) != RC::SUCCESS) {
-            return RC::SCHEMA_FIELD_MISSING;
-          }
+          wildcard_fields(table, projects_query, is_single_table);
         }
-      }
-      // 一个表的一个字段
-      else {
+      } 
+      else if (0 == strcmp(field_name, "*")) {
         auto iter = table_map.find(table_name);
         if (iter == table_map.end()) {
           LOG_WARN("no such table in from list: %s", table_name);
@@ -137,96 +158,55 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
         }
 
         Table *table = iter->second;
-        if (0 == strcmp(field_name, "*")) {
-          if (wildcard_fields(table, query_fields, relation_attr) != RC::SUCCESS) {
-            return RC::SCHEMA_FIELD_MISSING;
-          }
-        } else {
-          const FieldMeta *field_meta = table->table_meta().field(field_name);
-          if (nullptr == field_meta) {
-            LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
-            return RC::SCHEMA_FIELD_MISSING;
-          }
-          query_fields.push_back(Field(table,
-              field_meta,
-              relation_attr.is_length_func,
-              relation_attr.is_round_func,
-              relation_attr.round_num,
-              relation_attr.date_format,
-              relation_attr.aggregate_type));
+        wildcard_fields(table, projects_query, is_single_table);
+      }
+      else {
+        if(field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
+          LOG_INFO("expr->check_field error!");
+          return RC::SCHEMA_FIELD_MISSING;
         }
+        projects_query.emplace_back(expr);
       }
-    } else {
-      if (tables.size() != 1) {
-        LOG_WARN("invalid. I do not know the attr's table. attr=%s", relation_attr.attribute_name.c_str());
-        return RC::SCHEMA_FIELD_MISSING;
-      }
-
-      Table           *table      = tables[0];
-      const FieldMeta *field_meta = table->table_meta().field(relation_attr.attribute_name.c_str());
-      if (nullptr == field_meta) {
-        LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), relation_attr.attribute_name.c_str());
-        return RC::SCHEMA_FIELD_MISSING;
-      }
-
-      Field field = Field(table,
-          field_meta,
-          relation_attr.is_length_func,
-          relation_attr.is_round_func,
-          relation_attr.round_num,
-          relation_attr.date_format,
-          relation_attr.aggregate_type);
-
-      // function: 检查函数类型是否匹配
-      RC rc = field.check_function_type(relation_attr);
-      if (rc != RC::SUCCESS) {
+    }
+    else {
+      if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
+        LOG_WARN("project expr traverse check_field error!");
         return rc;
       }
-
-      // aggregation function: 检查类型是否匹配
-      rc = field.check_aggregate_func_type(relation_attr);
-      if (rc != RC::SUCCESS) {
-        return rc;
-      }
-      query_fields.push_back(field);
+      projects_query.emplace_back(expr);
     }
   }
+  select_sql.proj_exprs.clear();
+  LOG_INFO("got %d tables in from stmt and %d fields in query stmt", tables.size(), projects_query.size());
 
   // Aggregate function: select id, max(age) from student 这种混合使用是不考虑的
-  for (long unsigned int i = 0; i < query_fields.size(); i++) {
-    if (query_fields[i].aggregate_type_ != AggregateType::NONE) {
-      for (long unsigned int j = i + 1; j < query_fields.size(); j++) {
-        if (query_fields[j].aggregate_type_ == AggregateType::NONE) {
-          LOG_WARN("invalid query field. The aggregate function cannot mix with other common fields.");
-          return RC::SCHEMA_FIELD_MISSING;
-        }
-      }
-      break;
-    } else {
-      for (long unsigned int j = i + 1; j < query_fields.size(); j++) {
-        if (query_fields[j].aggregate_type_ != AggregateType::NONE) {
-          LOG_WARN("invalid query field. The aggregate function cannot mix with other common fields.");
-          return RC::SCHEMA_FIELD_MISSING;
-        }
-      }
-      break;
-    }
-  }
+  // for (long unsigned int i = 0; i < query_fields.size(); i++) {
+  //   if (query_fields[i].aggregate_type_ != AggregateType::NONE) {
+  //     for (long unsigned int j = i + 1; j < query_fields.size(); j++) {
+  //       if (query_fields[j].aggregate_type_ == AggregateType::NONE) {
+  //         LOG_WARN("invalid query field. The aggregate function cannot mix with other common fields.");
+  //         return RC::SCHEMA_FIELD_MISSING;
+  //       }
+  //     }
+  //     break;
+  //   } else {
+  //     for (long unsigned int j = i + 1; j < query_fields.size(); j++) {
+  //       if (query_fields[j].aggregate_type_ != AggregateType::NONE) {
+  //         LOG_WARN("invalid query field. The aggregate function cannot mix with other common fields.");
+  //         return RC::SCHEMA_FIELD_MISSING;
+  //       }
+  //     }
+  //     break;
+  //   }
+  // }
 
-  LOG_INFO("got %d tables in from stmt and %d fields in query stmt", tables.size(), query_fields.size());
-
-  Table *default_table = nullptr;
-  if (tables.size() == 1) {
-    default_table = tables[0];
-  }
 
   // create filter statement in `where` statement
-  FilterStmt *filter_stmt = nullptr;
+  FilterStmt * filter_stmt = nullptr;
   rc                      = FilterStmt::create(db,
       default_table,
       &table_map,
-      select_sql.conditions.data(),
-      static_cast<int>(select_sql.conditions.size()),
+      select_sql.conditions,
       filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("cannot construct filter stmt");
@@ -237,7 +217,7 @@ RC SelectStmt::create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt)
   SelectStmt *select_stmt = new SelectStmt();
   // TODO add expression copy
   select_stmt->tables_.swap(tables);
-  select_stmt->query_fields_.swap(query_fields);
+  select_stmt->projects_query_.swap(projects_query);
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->join_stmt_.swap(join_stmt);
   stmt = select_stmt;

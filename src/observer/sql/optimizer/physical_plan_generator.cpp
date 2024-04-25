@@ -193,10 +193,11 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
   }
 
   ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator;
-  const vector<Field>     &project_fields   = project_oper.fields();
-  for (const Field &field : project_fields) {
-    project_operator->add_projection(field);
-  }
+  // const vector<Field>     &project_fields   = project_oper.fields();
+  // for (const Field &field : project_fields) {
+  //   project_operator->add_projection(field);
+  // }
+  project_operator->add_projections(std::move(project_oper.projects()));
 
   if (child_phy_oper) {
     project_operator->add_child(std::move(child_phy_oper));

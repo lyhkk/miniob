@@ -14,12 +14,68 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/expr/expression.h"
 #include "sql/expr/tuple.h"
-
+#include "common/lang/string.h"
 using namespace std;
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  return tuple.find_cell(TupleCellSpec(table_name(), field_name(), nullptr, field().is_length_func_, field().is_round_func_, field().round_num_, field().date_format_.c_str()), value);
+  return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+}
+
+RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
+  const std::vector<Table *> &tables, Table* default_table,
+  const std::unordered_map<std::string, std::string> & table_alias_map) {
+  ASSERT(field_name_ != "*", "ERROR!");
+  const char* table_name = table_name_.c_str();
+  const char* field_name = field_name_.c_str();
+  Table * table = nullptr;
+  if(!common::is_blank(table_name)) { //表名不为空
+    // check table
+    auto iter = table_map.find(table_name);
+    if (iter == table_map.end()) {
+      LOG_WARN("no such table in from list: %s", table_name);
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+    table = iter->second;
+  } else { // 表名为空，只有列名
+    if (tables.size() != 1 && default_table == nullptr) {
+      LOG_WARN("invalid. I do not know the attr's table. attr=%s", this->field_name());
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+    table = default_table ? default_table : tables[0];
+  }
+  ASSERT(nullptr != table, "ERROR!");
+  // set table_name
+  table_name_ = table->name();
+  // check field
+  const FieldMeta *field_meta = table->table_meta().field(field_name);
+  if (nullptr == field_meta) {
+    LOG_WARN("no such field. field=%s.%s", table->name(), field_name);
+    return RC::SCHEMA_FIELD_MISSING;
+  }
+  // set field_
+  field_ = Field(table, field_meta);
+  // set name 没用了 暂时保留它
+  bool is_single_table = (tables.size() == 1);
+  if(is_single_table) {
+    set_name(field_name_);
+  } else {
+    set_name(table_name_ + "." + field_name_);
+  }
+  // set alias
+  if (alias().empty()) {
+    if (is_single_table) {
+      set_alias(field_name_);
+    } else {
+      auto iter = table_alias_map.find(table_name_);
+      if (iter != table_alias_map.end()) {
+        set_alias(iter->second + "." + field_name_);
+      } else {
+        set_alias(table_name_ + "." + field_name_);
+      }
+    }
+  }
+  return RC::SUCCESS;
 }
 
 RC ValueExpr::get_value(const Tuple &tuple, Value &value) const

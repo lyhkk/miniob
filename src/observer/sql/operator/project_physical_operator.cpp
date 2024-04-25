@@ -54,17 +54,25 @@ Tuple *ProjectPhysicalOperator::current_tuple()
   return &tuple_;
 }
 
-void ProjectPhysicalOperator::add_projection(const Field &field)
+void ProjectPhysicalOperator::add_projection(std::unique_ptr<Expression>&& project)
 {
   // 对单表来说，展示的(alias) 字段总是字段名称，
   // 对多表查询来说，展示的alias 需要带表名字
-  const char *table_name = field.table_name();
-  const char *field_name = field.field_name();
-  int is_length_func = field.is_length_func_;
-  int is_round_func = field.is_round_func_;
-  int round_num = field.round_num_;
-  AggregateType aggregate_type = field.aggregate_type_;
-  std::string date_format = field.date_format_;
-  TupleCellSpec *spec = new TupleCellSpec(table_name, field_name, nullptr, is_length_func, is_round_func, round_num, date_format.c_str(), aggregate_type);
-  tuple_.add_cell_spec(spec);
+  // const char *table_name = field.table_name();
+  // const char *field_name = field.field_name();
+  // int is_length_func = field.is_length_func_;
+  // int is_round_func = field.is_round_func_;
+  // int round_num = field.round_num_;
+  // AggregateType aggregate_type = field.aggregate_type_;
+  // std::string date_format = field.date_format_;
+  // TupleCellSpec *spec = new TupleCellSpec(table_name, field_name, nullptr, is_length_func, is_round_func, round_num, date_format.c_str(), aggregate_type);
+  // tuple_.add_cell_spec(spec);
+  tuple_.add_expr(std::move(project));
+}
+
+void ProjectPhysicalOperator::add_projections(std::vector<std::unique_ptr<Expression>> &&projections)
+{
+  for (auto& project : projections) {
+    add_projection(std::move(project));
+  }
 }

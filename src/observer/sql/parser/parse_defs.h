@@ -21,6 +21,13 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/parser/value.h"
 
+enum class FunctionType
+{
+  LENGTH,
+  ROUND,
+  DATE_FORMAT,
+};
+
 class Expression;
 
 /**
@@ -38,15 +45,17 @@ struct RelAttrSqlNode
 {
   std::string   relation_name;   ///< relation name (may be NULL) 表名
   std::string   attribute_name;  ///< attribute name              属性名
+
   int           is_length_func;  ///< 是否是长度函数
   int           is_round_func;   ///< 是否是round函数
   std::string   date_format;     ///< 是否是date_format函数
   int           round_num;       ///< round函数的参数
   std::string   function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
-  std::string   alias_name;      ///< 别名
+  
   AggregateType aggregate_type;  ///< 聚合函数类型
 
-  RelAttrSqlNode() : aggregate_type(AggregateType::NONE) {}
+  RelAttrSqlNode() : is_length_func(0), is_round_func(0), date_format(""), round_num(0),  function_value(""), 
+    aggregate_type(AggregateType::NONE) {}
   AttrType get_func_attr_type(AttrType type) const
   {  // function功能，需要修改type
     if (is_length_func == 1) {
@@ -76,6 +85,10 @@ enum CompOp
   GREAT_THAN,   ///< ">"
   LIKE_OP,      ///< "LIKE"
   NOT_LIKE_OP,  ///< "NOT LIKE"
+  EXISTS_OP,    ///< "EXISTS"
+  NOT_EXISTS_OP,///< "NOT EXISTS"
+  IN_OP,        ///< "IN"
+  NOT_IN_OP,    ///< "NOT IN"
   NO_OP
 };
 
@@ -87,18 +100,18 @@ enum CompOp
  * 左边和右边理论上都可以是任意的数据，比如是字段（属性，列），也可以是数值常量。
  * 这个结构中记录的仅仅支持字段和值。
  */
-struct ConditionSqlNode
-{
-  int left_is_attr;              ///< TRUE if left-hand side is an attribute
-                                 ///< 1时，操作符左边是属性名，0时，是属性值
-  Value          left_value;     ///< left-hand side value if left_is_attr = FALSE
-  RelAttrSqlNode left_attr;      ///< left-hand side attribute
-  CompOp         comp;           ///< comparison operator
-  int            right_is_attr;  ///< TRUE if right-hand side is an attribute
-                                 ///< 1时，操作符右边是属性名，0时，是属性值
-  RelAttrSqlNode right_attr;     ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
-  Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
-};
+// struct ConditionSqlNode
+// {
+//   int left_is_attr;              ///< TRUE if left-hand side is an attribute
+//                                  ///< 1时，操作符左边是属性名，0时，是属性值
+//   Value          left_value;     ///< left-hand side value if left_is_attr = FALSE
+//   RelAttrSqlNode left_attr;      ///< left-hand side attribute
+//   CompOp         comp;           ///< comparison operator
+//   int            right_is_attr;  ///< TRUE if right-hand side is an attribute
+//                                  ///< 1时，操作符右边是属性名，0时，是属性值
+//   RelAttrSqlNode right_attr;     ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
+//   Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
+// };
 
 /**
  * @brief 描述一个表
@@ -109,7 +122,7 @@ struct JoinTableSqlNode
   std::string                   relation_name;       ///< 表名
   std::string                   alias_name;          ///< 表的别名
   JoinTableSqlNode             *sub_join = nullptr;  ///< 下一张表
-  std::vector<ConditionSqlNode> join_condition;      ///< on条件
+  Expression                   *join_condition = nullptr;
 };
 
 /**
@@ -117,17 +130,14 @@ struct JoinTableSqlNode
  * @ingroup SQLParser
  * @details 一个正常的select语句描述起来比这个要复杂很多，这里做了简化。
  * 一个select语句由三部分组成，分别是select, from, where。
- * select部分表示要查询的字段，from部分表示要查询的表，where部分表示查询的条件。
- * 比如 from 中可以是多个表，也可以是另一个查询语句，这里仅仅支持表，也就是 relations。
- * where 条件 conditions，这里表示使用AND串联起来多个条件。正常的SQL语句会有OR，NOT等，
- * 甚至可以包含复杂的表达式。
+ * select部分表示要查询的expression，from部分表示要查询的表，where部分表示查询的条件。
  */
 
 struct SelectSqlNode
 {
-  std::vector<RelAttrSqlNode>   attributes;  ///< attributes in select clause
+  std::vector<Expression *>     proj_exprs;  ///< expressions in the select clause
   JoinTableSqlNode             *table;       ///< 查询的表
-  std::vector<ConditionSqlNode> conditions;  ///< 查询条件，使用AND串联起来多个条件
+  Expression                   *conditions = nullptr;       ///< 查询的条件
 };
 
 /**
@@ -159,7 +169,7 @@ struct InsertSqlNode
 struct DeleteSqlNode
 {
   std::string                   relation_name;  ///< Relation to delete from
-  std::vector<ConditionSqlNode> conditions;
+  Expression                   *conditions = nullptr;
 };
 
 /**
@@ -171,7 +181,7 @@ struct UpdateSqlNode
   std::string                   relation_name;   ///< Relation to update
   std::string                   attribute_name;  ///< 更新的字段
   Value                         value;           ///< 更新的值
-  std::vector<ConditionSqlNode> conditions;
+  Expression                   *conditions = nullptr;
 };
 
 /**

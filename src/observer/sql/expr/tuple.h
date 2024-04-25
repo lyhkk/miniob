@@ -136,11 +136,13 @@ public:
 
   void set_record(Record *record) { this->record_ = record; }
 
-  void set_schema(const Table *table, const std::vector<FieldMeta> *fields)
+  void set_schema(const Table *table)
   {
+    ASSERT(nullptr != table, "RowTuple set_schema with a null table");
     table_ = table;
     // fix:join当中会多次调用右表的open,open当中会调用set_scheme，从而导致tuple当中会存储
     // 很多无意义的field和value，因此需要先clear掉
+    const std::vector<FieldMeta> *fields = table_->table_meta().field_metas();
     this->speces_.clear();
     this->speces_.reserve(fields->size());
     for (const FieldMeta &field : *fields) {
@@ -164,8 +166,8 @@ public:
 
     cell.set_type(field_meta->type());
     cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
-    field.function_data(cell);
-    cell.aggregate_type_ = field.aggregate_type_;
+    // field.function_data(cell);
+    // cell.aggregate_type_ = field.aggregate_type_;
     return RC::SUCCESS;
   }
 
@@ -180,11 +182,6 @@ public:
     for (size_t i = 0; i < speces_.size(); ++i) {
       FieldExpr       *field_expr = speces_[i];
       Field            field      = field_expr->field();
-      field_expr->field().is_length_func_ = spec.is_length_func_;
-      field_expr->field().is_round_func_ = spec.is_round_func_;
-      field_expr->field().round_num_ = spec.round_num_;
-      field_expr->field().date_format_ = spec.date_format_;
-      field_expr->field().aggregate_type_ = spec.aggregate_type_;
       if (0 == strcmp(field_name, field.field_name())) {
         return cell_at(i, cell);
       }
@@ -206,7 +203,7 @@ public:
 
   Record &record() { return *record_; }
 
-  const Record &record() const { return *record_; }
+  const Record &record() const { return *record_; } 
 
 private:
   Record                  *record_ = nullptr;
@@ -227,28 +224,25 @@ public:
   ProjectTuple() = default;
   virtual ~ProjectTuple()
   {
-    for (TupleCellSpec *spec : speces_) {
-      delete spec;
-    }
-    speces_.clear();
+    exprs_.clear();
   }
 
   void set_tuple(Tuple *tuple) { this->tuple_ = tuple; }
+  const std::vector<std::unique_ptr<Expression>> &expressions() const { return exprs_; }
 
-  void add_cell_spec(TupleCellSpec *spec) { speces_.push_back(spec); }
-  int  cell_num() const override { return speces_.size(); }
+  void add_expr(std::unique_ptr<Expression> expr) { exprs_.emplace_back(std::move(expr)); }
+  int  cell_num() const override { return exprs_.size(); }
 
   RC cell_at(int index, Value &cell) const override
   {
-    if (index < 0 || index >= static_cast<int>(speces_.size())) {
+    if (index < 0 || index >= static_cast<int>(exprs_.size())) {
       return RC::INTERNAL;
     }
     if (tuple_ == nullptr) {
       return RC::INTERNAL;
     }
 
-    const TupleCellSpec *spec = speces_[index];
-    return tuple_->find_cell(*spec, cell);
+    return exprs_[index]->get_value(*tuple_, cell);
   }
 
   RC find_cell(const TupleCellSpec &spec, Value &cell) const override { return tuple_->find_cell(spec, cell); }
@@ -264,8 +258,8 @@ public:
   }
 #endif
 private:
-  std::vector<TupleCellSpec *> speces_;
-  Tuple                       *tuple_ = nullptr;
+  std::vector<std::unique_ptr<Expression>> exprs_;
+  Tuple                                   *tuple_ = nullptr;
 };
 
 class ExpressionTuple : public Tuple

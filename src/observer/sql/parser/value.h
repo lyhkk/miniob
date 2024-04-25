@@ -37,13 +37,13 @@ enum AttrType
  *
  */
 enum class AggregateType {
+  NONE,
   COUNT,
   COUNT_STAR,
   SUM,
   AVG,
   MAX,
-  MIN,
-  NONE
+  MIN
 };
 
 
