@@ -419,7 +419,9 @@ value:
         yyerror(&@$,sql_string,sql_result,scanner,"date invaid", true);
         YYERROR;
       }
-      $$ = value;
+      else {
+        $$ = value;
+      }
       free(tmp);
       free($1);
     }
