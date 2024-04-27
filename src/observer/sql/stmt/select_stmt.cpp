@@ -39,7 +39,8 @@ static void wildcard_fields(Table *table, std::vector<std::unique_ptr<Expression
   for (int i = table_meta.sys_field_num(); i < field_num; i++) {
     const FieldMeta* field_meta = table_meta.field(i);
     if (field_meta->visible()) {
-      FieldExpr *tmp = new FieldExpr(table, field_meta);
+      FieldExpr *tmp = new FieldExpr(table->name(), field_meta->name());
+      tmp->set_field(table, field_meta);
       if (is_single_table) {
         tmp->set_name(tmp->field_name());
       } else {

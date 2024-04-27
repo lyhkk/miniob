@@ -413,7 +413,12 @@ value:
     }
     |DATE_STR {
       char *tmp = common::substr($1,1,strlen($1)-2);
-      $$ = new Value(tmp);
+      Value *value = new Value(tmp);
+      if (value->attr_type() == AttrType::UNDEFINED) {
+        yyerror(&@$,sql_string,sql_result,scanner,"date invaid");
+        YYERROR;
+      }
+      $$ = value;
       free(tmp);
       free($1);
     }
