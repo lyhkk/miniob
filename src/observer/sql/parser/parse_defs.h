@@ -297,6 +297,7 @@ struct ErrorSqlNode
   std::string error_msg;
   int         line;
   int         column;
+  bool        flag; // 标识是否是因为数据非法导致的错误，需要返回客户端Faliure
 };
 
 /**
