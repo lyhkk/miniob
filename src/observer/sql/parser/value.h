@@ -79,7 +79,7 @@ public:
   void set_string(const char *s, int len = 0);
   void set_value(const Value &value);
   bool check_date(int y, int m, int d);
-  void invalid_date();
+  void set_undefined();
 
   std::string to_string() const;
   std::string function_data(const char *date_format = nullptr); // 只用于function题目中，不查表只计算的情况下，返回数据

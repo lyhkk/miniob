@@ -148,6 +148,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <number>              type
 %type <expression>          condition
 %type <value>               value
+%type <value>               negative_value
 %type <number>              number
 %type <comp>                comp_op
 %type <comp>                exists_op
@@ -402,6 +403,15 @@ value_list:
       $$->emplace_back(*$2);
       delete $2;
     }
+    | COMMA negative_value value_list  { 
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<Value>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
+    }
     ;
 value:
     NUMBER {
@@ -432,7 +442,17 @@ value:
       free($1);
     }
     ;
-    
+
+negative_value:
+    '-' NUMBER {
+      $$ = new Value((int)-$2);
+      @$ = @2;
+    }
+    | '-' FLOAT {
+      $$ = new Value((float)-$2);
+      @$ = @2;
+    }
+    ;
 // aggregate_type:
 //     MAX { $$ = AggregateType::MAX; }
 //     | MIN { $$ = AggregateType::MIN; }

@@ -54,7 +54,7 @@ Value::Value(const char *s, int len /*= 0*/)
   if (std::regex_match(p, pattern)) {
     sscanf(p, "%d-%d-%d", &y, &m, &d);
     if (!check_date(y, m, d)) {
-      invalid_date();
+      set_undefined();
       return;
     }
     set_date(10000 * y + 100 * m + d);
@@ -63,11 +63,9 @@ Value::Value(const char *s, int len /*= 0*/)
   }
 }
 
-void Value::invalid_date()
+void Value::set_undefined()
 {
   attr_type_            = UNDEFINED;
-  num_value_.int_value_ = -1;
-  length_               = -1;
 }
 
 bool Value::check_date(int y, int m, int d)
