@@ -33,8 +33,7 @@ enum AttrType
 };
 
 /**
- * @brief 属性使用的聚合函数类型
- *
+ * @brief 表达式使用的聚合函数类型
  */
 enum class AggregateType {
   NONE,
@@ -44,6 +43,16 @@ enum class AggregateType {
   AVG,
   MAX,
   MIN
+};
+
+/**
+ * @brief 表达式使用的函数类型
+ */
+enum class FunctionType
+{
+  LENGTH,
+  ROUND,
+  DATE_FORMAT,
 };
 
 
@@ -86,6 +95,8 @@ public:
 
   int compare(const Value &other) const;
   int like_type_compare(const Value &other) const;
+  void add(const Value &other);
+  void div(const Value &other);
 
   const char *data() const;
   int         length() const { return length_; }
@@ -102,15 +113,6 @@ public:
   std::string get_string() const;
   bool        get_boolean() const;
   int         undefined_value(); // date类型数据如果invalid，通过这个接口传回1/0，表示是否有效
-
-public:
-  // 为了支持function功能下，置位value后，重新恢复内存中的value
-  int is_length_func_;
-  int is_round_func_;
-  int round_num_;
-  int is_date_format_func_;
-  AggregateType aggregate_type_;
-
 
 private:
   AttrType attr_type_ = UNDEFINED;

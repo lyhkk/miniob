@@ -13,13 +13,27 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/log/log.h"
 #include "sql/expr/tuple.h"
 #include "common/lang/string.h"
+#include "sql/parser/value.h"
+#include <memory>
+#include <cmath>
 using namespace std;
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  if(is_first_)
+  {
+    // GroupTuple *group_tuple = static_cast<GroupTuple*>(const_cast<Tuple*>(&tuple));
+    bool & is_first_ref = const_cast<bool&>(is_first_);
+    is_first_ref = false;
+    return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value, const_cast<int&>(index_));
+  }
+  else
+  {
+    return tuple.cell_at(index_,value);
+  }
 }
 
 RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
@@ -392,4 +406,292 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   }
 
   return calc_value(left_value, right_value, value);
+}
+
+AggrFunctionExpr::AggrFunctionExpr(AggregateType aggr_type, std::unique_ptr<Expression> &param) 
+  : aggr_type_(aggr_type), param_(std::move(param))
+{}
+
+AggrFunctionExpr::AggrFunctionExpr(AggregateType aggr_type, Expression* param)
+  : aggr_type_(aggr_type), param_(param)
+{}
+
+RC AggrFunctionExpr::check_aggregate_func_type() const {
+  AttrType type = param_->value_type();
+  if (aggr_type_ == AggregateType::AVG || aggr_type_ == AggregateType::SUM) {
+    if (type != AttrType::INTS && type != AttrType::FLOATS) {
+      return RC::INVALID_ARGUMENT;
+    }
+  }
+  return RC::SUCCESS;
+}
+
+AttrType AggrFunctionExpr::get_aggr_attr_type(AttrType type) const {
+  if (aggr_type_ == AggregateType::AVG) {
+    return AttrType::FLOATS;
+  }
+  else if (aggr_type_ == AggregateType::COUNT || aggr_type_ == AggregateType::COUNT_STAR) {
+    return AttrType::INTS;
+  }
+  else if (aggr_type_ == AggregateType::MAX || aggr_type_ == AggregateType::MIN || aggr_type_ == AggregateType::SUM) {
+    return type;
+  }
+  return AttrType::UNDEFINED;
+}
+
+RC AggrFunctionExpr::get_value(const Tuple &tuple, Value &value) const {
+  RC rc = RC::SUCCESS;
+  TupleCellSpec spec(name().c_str());
+  //int index = 0;
+  // spec.set_agg_type(get_aggr_func_type());
+  if(is_first_)
+  {
+    bool & is_first_ref = const_cast<bool&>(is_first_);
+    is_first_ref = false;
+    GroupTuple *group_tuple = static_cast<GroupTuple*>(const_cast<Tuple*>(&tuple));
+    rc = group_tuple->find_cell(spec, value, const_cast<int&>(index_));
+  }
+  else
+  {
+    return tuple.cell_at(index_, value);
+  }
+  return rc;
+}
+
+RC AggrFunctionExpr::try_get_value(Value &value) const {
+  RC rc = RC::SUCCESS;
+  Value cell;
+  rc = param_->try_get_value(cell);
+  return rc;
+}
+
+AttrType FuncExpr::get_func_attr_type(AttrType type) const
+{  // function功能，需要修改type
+  if (FunctionType::LENGTH == func_type_) {
+    return AttrType::INTS;
+  } else if (FunctionType::ROUND == func_type_) {
+    return AttrType::FLOATS;
+  } else if (FunctionType::DATE_FORMAT == func_type_) {
+    return AttrType::CHARS;
+  }
+  return type;
+}
+
+FuncExpr::FuncExpr(FunctionType func_type, vector<Expression*> &params)
+  : func_type_(func_type) 
+{
+  for (auto& param : params) {
+    params_.emplace_back(param);
+  }
+}
+
+RC FuncExpr::check_function_param_type() const{
+  switch(func_type_) {
+    case FunctionType::LENGTH: {
+      if (params_.size() != 1) {
+        return RC::INVALID_ARGUMENT;
+      }
+      if (params_[0]->value_type() != AttrType::CHARS) {
+        return RC::INVALID_ARGUMENT;
+      }
+    } break;
+    case FunctionType::ROUND: {
+      if (params_.size() != 1 && params_.size() != 2) {
+        return RC::INVALID_ARGUMENT;
+      }
+      if (params_[0]->value_type() != AttrType::FLOATS) {
+        return RC::INVALID_ARGUMENT;
+      }
+      if (params_.size() == 2 && params_[1]->value_type() != AttrType::INTS) {
+        return RC::INVALID_ARGUMENT;
+      }
+    } break;
+    case FunctionType::DATE_FORMAT: {
+      if (params_.size() != 2) {
+        return RC::INVALID_ARGUMENT;
+      }
+      if (params_[0]->value_type() != AttrType::DATES) {
+        return RC::INVALID_ARGUMENT;
+      }
+      if (params_[1]->value_type() != AttrType::CHARS) {
+        return RC::INVALID_ARGUMENT;
+      }
+    } break;
+  }
+  return RC::SUCCESS;
+}
+
+RC FuncExpr::try_get_value(Value &value) const{
+  RC rc = RC::SUCCESS;
+  Value cell; // 用于存储待计算子表达式的值
+  switch(func_type_) {
+    case FunctionType::LENGTH: {
+      assert(params_.size() == 1);
+      rc = params_[0]->try_get_value(cell);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+      value.set_int(cell.get_string().size());
+    } break;
+    case FunctionType::ROUND: {
+      assert(params_.size() == 2 || params_.size() == 1);
+
+      // 1. get round_num(四舍五入的位数)
+      int round_num = 0;
+      if (params_.size() == 1) {
+        round_num = 0;
+      }
+      else {
+        Value tmp;
+        rc = params_[1]->try_get_value(tmp);
+        if (rc != RC::SUCCESS) {
+          LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+          return rc;
+        }
+        round_num = tmp.get_int();
+      }
+
+      // 2. get cell
+      rc = params_[0]->try_get_value(cell);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+
+      // 3. round && set value
+      float round_value = cell.get_float();
+      // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
+      float temp = round_value * std::pow(10, round_num);
+      temp = std::round(temp);
+      temp = temp / std::pow(10, round_num);
+      if (round_num <= 0) {
+        value.set_int(temp);
+      }
+      else {
+        value.set_float(temp);
+      }
+    } break;
+    case FunctionType::DATE_FORMAT: {
+      assert(params_.size() == 2);
+      // 1. get cell && check type
+      rc = params_[0]->try_get_value(cell);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+      // 2. get date_format
+      Value format_value;
+      rc = params_[1]->try_get_value(format_value);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+      std::string date_format = format_value.get_string();
+
+      // 3. format date && set value
+      int date = cell.get_int();
+      std::string date_str = std::to_string(date);
+      std::stringstream ss(date_str);
+      tm tm = {};
+      char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
+      if (formatted_date == NULL) {
+        LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+      }
+      else {
+        char buffer[80];
+        strftime(buffer, 80, date_format.c_str(), &tm);
+        value.set_string(buffer);
+      }
+    } break;
+  }
+  return rc;
+}
+
+RC FuncExpr::get_value(const Tuple &tuple, Value &value) const{
+  RC rc = RC::SUCCESS;
+  Value cell; // 用于存储待计算子表达式的值
+  switch(func_type_) {
+    case FunctionType::LENGTH: {
+      assert(params_.size() == 1);
+      rc = params_[0]->get_value(tuple, cell);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+      
+      value.set_int(cell.get_string().size());
+    } break;
+    case FunctionType::ROUND: {
+      assert(params_.size() == 2 || params_.size() == 1);
+
+      // 1. get round_num(四舍五入的位数)
+      int round_num = 0;
+      if (params_.size() == 1) {
+        round_num = 0;
+      }
+      else {
+        Value tmp;
+        rc = params_[1]->try_get_value(tmp);
+        if (rc != RC::SUCCESS || tmp.attr_type() != AttrType::INTS) {
+          LOG_WARN("failed to get value of child expression. rc=%s", RC::INTERNAL);
+          return RC::INTERNAL;
+        }
+        round_num = tmp.get_int();
+      }
+
+      // 2. get cell
+      rc = params_[0]->get_value(tuple, cell);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+      // 3. round
+      float round_value = cell.get_float();
+      // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
+      float temp = round_value * std::pow(10, round_num);
+      temp = std::round(temp);
+      temp = temp / std::pow(10, round_num);
+      if (round_num <= 0) {
+        value.set_int(temp);
+      }
+      else {
+        value.set_float(temp);
+      }
+    } break;
+    case FunctionType::DATE_FORMAT: {
+      assert(params_.size() == 2);
+      // 1. get cell && check type
+      rc = params_[0]->get_value(tuple, cell);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
+        return rc;
+      }
+
+      // 2. get date_format
+      Value format_value;
+      rc = params_[1]->try_get_value(format_value);
+      if (rc != RC::SUCCESS || format_value.attr_type() != AttrType::CHARS) {
+        LOG_WARN("failed to get value of child expression. rc=RC::INTERNAL");
+        return RC::INTERNAL;
+      }
+      std::string date_format = format_value.get_string();
+
+      // 3. format date && set value
+      int date = cell.get_int();
+      std::string date_str = std::to_string(date);
+      std::stringstream ss(date_str);
+      tm tm = {};
+      char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
+      if (formatted_date == NULL) {
+        LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+      }
+      else {
+        char buffer[80];
+        strftime(buffer, 80, date_format.c_str(), &tm);
+        value.set_string(buffer);
+      }
+    } break;
+  }
+  return rc;
 }

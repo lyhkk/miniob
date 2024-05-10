@@ -28,7 +28,9 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/project_logical_operator.h"
 #include "sql/operator/table_get_logical_operator.h"
 #include "sql/operator/update_logical_operator.h"
+#include "sql/operator/groupby_logical_operator.h"
 
+#include "sql/stmt/groupby_stmt.h"
 #include "sql/stmt/calc_stmt.h"
 #include "sql/stmt/delete_stmt.h"
 #include "sql/stmt/explain_stmt.h"
@@ -86,6 +88,20 @@ RC LogicalPlanGenerator::create(Stmt *stmt, unique_ptr<LogicalOperator> &logical
   return rc;
 }
 
+RC LogicalPlanGenerator::create_plan(GroupByStmt *groupby_stmt, std::unique_ptr<LogicalOperator> &logical_operator) {
+  if (groupby_stmt == nullptr) {
+    logical_operator = nullptr;
+    return RC::SUCCESS;
+  }
+
+  unique_ptr<LogicalOperator> groupby_oper(
+    new GroupByLogicalOperator(std::move(groupby_stmt->groupby_exprs()),
+                            std::move(groupby_stmt->aggr_exprs()),
+                            std::move(groupby_stmt->field_exprs())));
+  logical_operator = std::move(groupby_oper);
+  return RC::SUCCESS;
+}
+
 RC LogicalPlanGenerator::create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator)
 {
   logical_operator.reset(new CalcLogicalOperator(std::move(calc_stmt->expressions())));
@@ -138,6 +154,7 @@ RC LogicalPlanGenerator::create_plan(JoinStmt *join_stmt, const std::vector<Fiel
 RC LogicalPlanGenerator::create_plan(
     SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator, bool readonly)
 {
+  unique_ptr<LogicalOperator> father_logical_oper(nullptr);
   unique_ptr<LogicalOperator> table_oper(nullptr);
   std::vector<unique_ptr<Expression>> &projects = select_stmt->projects();
 
@@ -153,26 +170,58 @@ RC LogicalPlanGenerator::create_plan(
     if (rc != RC::SUCCESS) {
       return rc;
     }
+    father_logical_oper = std::move(table_oper);
   }
 
   unique_ptr<LogicalOperator> predicate_oper;
-
-  rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
-  if (rc != RC::SUCCESS) {
-    LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
-    return rc;
+  if (select_stmt->filter_stmt() != nullptr) {
+    rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if (predicate_oper) {
+      if (father_logical_oper) {
+        predicate_oper->add_child(std::move(father_logical_oper));
+      }
+      father_logical_oper = std::move(predicate_oper);
+    }
   }
 
+  unique_ptr<LogicalOperator> groupby_oper;
+  if (select_stmt->groupby_stmt() != nullptr) {
+    rc = create_plan(select_stmt->groupby_stmt(), groupby_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if (groupby_oper) {
+      if (father_logical_oper) {
+        groupby_oper->add_child(std::move(father_logical_oper));
+      }
+      father_logical_oper = std::move(groupby_oper);
+    }
+  }
+
+  unique_ptr<LogicalOperator> having_filter_oper;
+  if (select_stmt->having_filter_stmt() != nullptr) {
+    rc = create_plan(select_stmt->having_filter_stmt(), groupby_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if (having_filter_oper) {
+      if (father_logical_oper) {
+        having_filter_oper->add_child(std::move(father_logical_oper));
+      }
+      father_logical_oper = std::move(having_filter_oper);
+    }
+  }
+
+
   unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(projects));
-  if (predicate_oper) {
-    if (table_oper) {
-      predicate_oper->add_child(std::move(table_oper));
-    }
-    project_oper->add_child(std::move(predicate_oper));
-  } else {
-    if (table_oper) {
-      project_oper->add_child(std::move(table_oper));
-    }
+  if (father_logical_oper) {
+    project_oper->add_child(std::move(father_logical_oper));
   }
 
   logical_operator.swap(project_oper);

@@ -24,47 +24,6 @@ class Db;
 class Table;
 class FieldMeta;
 
-struct FilterObj
-{
-  bool  is_attr;
-  Field field;
-  Value value;
-
-  void init_attr(const Field &field)
-  {
-    is_attr     = true;
-    this->field = field;
-  }
-
-  void init_value(const Value &value)
-  {
-    is_attr     = false;
-    this->value = value;
-  }
-};
-
-class FilterUnit
-{
-public:
-  FilterUnit() = default;
-  ~FilterUnit() {}
-
-  void set_comp(CompOp comp) { comp_ = comp; }
-
-  CompOp comp() const { return comp_; }
-
-  void set_left(const FilterObj &obj) { left_ = obj; }
-  void set_right(const FilterObj &obj) { right_ = obj; }
-
-  const FilterObj &left() const { return left_; }
-  const FilterObj &right() const { return right_; }
-
-private:
-  CompOp    comp_ = NO_OP;
-  FilterObj left_;
-  FilterObj right_;
-};
-
 /**
  * @brief Filter/谓词/过滤语句
  * @ingroup Statement

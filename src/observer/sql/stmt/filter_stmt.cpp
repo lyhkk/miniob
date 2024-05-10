@@ -42,6 +42,10 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
       return field_expr->check_field(*tables, {}, default_table, {});
     }
+    else if (expr->type() == ExprType::FUNCTION) {
+      FuncExpr* func_expr = static_cast<FuncExpr*>(expr);
+      return func_expr->check_function_param_type();
+    }
     return RC::SUCCESS;
   };
 

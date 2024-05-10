@@ -391,42 +391,32 @@ bool Value::get_boolean() const
   return false;
 }
 
-std::string Value::function_data(const char *date_format)
-{
-  if (is_length_func_ == 1) {
-    std::string temp = get_string();
-    set_int(temp.size());
-    is_length_func_ = 0;
-    return to_string();
-  } else if (is_round_func_ == 1) {
-    float value = get_float();
-    // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
-    float temp = value * std::pow(10, round_num_);
-    temp       = std::round(temp);
-    temp       = temp / std::pow(10, round_num_);
-    if (round_num_ <= 0) {
-      set_int(temp);
-    } else {
-      set_float(temp);
+void Value::add(const Value &other) {
+  if (attr_type_ == AttrType::INTS) {
+    int int_value = num_value_.int_value_;
+    if (other.attr_type() == AttrType::INTS) {
+      num_value_.int_value_ = int_value + other.get_int();
     }
-    is_round_func_ = 0;
-    return to_string();
-  } else if (is_date_format_func_ == 1) {
-    std::string       date_format_ = date_format;
-    int               date         = get_int();
-    std::string       date_str     = std::to_string(date);
-    std::stringstream ss(date_str);
-    tm                tm             = {};
-    char             *formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
-    if (formatted_date == NULL) {
-      LOG_INFO("A weird date. date=%s", date_str.c_str());  // 理论上不会出现这种情况，为了完整性
-    } else {
-      char buffer[80];
-      strftime(buffer, 80, date_format_.c_str(), &tm);
-      set_string(buffer);
-      is_date_format_func_ = 0;
-      return to_string();
+    else if (other.attr_type() == AttrType::FLOATS) {
+      set_float(int_value + other.get_float());
     }
   }
-  return "";
+  else if (attr_type_ == AttrType::FLOATS) {
+    float float_value = num_value_.float_value_;
+    if (other.attr_type() == AttrType::INTS) {
+      set_float(float_value + other.get_int());
+    }
+    else if (other.attr_type() == AttrType::FLOATS) {
+      set_float(float_value + other.get_float());
+    }
+  }
+}
+
+void Value::div(const Value &other) {
+  if (attr_type_ == AttrType::INTS) {
+    set_float((float)get_int() / other.get_int());
+  }
+  else if (attr_type_ == AttrType::FLOATS) {
+    set_float(get_float() / other.get_int());
+  }
 }

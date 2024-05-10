@@ -20,13 +20,12 @@ string token_name(const char *sql_string, YYLTYPE *llocp)
   return string(sql_string + llocp->first_column, llocp->last_column - llocp->first_column + 1);
 }
 
-int yyerror(YYLTYPE *llocp, const char *sql_string, ParsedSqlResult *sql_result, yyscan_t scanner, const char *msg, bool flag=false)
+int yyerror(YYLTYPE *llocp, const char *sql_string, ParsedSqlResult *sql_result, yyscan_t scanner, const char *msg)
 {
   std::unique_ptr<ParsedSqlNode> error_sql_node = std::make_unique<ParsedSqlNode>(SCF_ERROR);
   error_sql_node->error.error_msg = msg;
   error_sql_node->error.line = llocp->first_line;
   error_sql_node->error.column = llocp->first_column;
-  error_sql_node->error.flag = flag;
   sql_result->add_sql_node(std::move(error_sql_node));
   return 0;
 }
@@ -74,6 +73,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         NOT_IN
         EXISTS
         NOT_EXISTS
+        GROUP_BY
+        HAVING
         UPDATE
         LENGTH
         ROUND
@@ -154,11 +155,10 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <comp>                exists_op
 %type <expression>          where
 %type <rel_attr>            rel_attr
-// %type <rel_attr>            func_for_imm
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
-// %type <aggregate_type>      aggregate_type
-// %type <function_type>       func_type
+%type <aggregate_type>      aggregate_type
+%type <function_type>       func_type
 %type <value_list>          value_list
 %type <relation_list>       rel_list
 %type <relation_list>       from
@@ -167,8 +167,10 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <expression>          join_on
 %type <string>              as_info 
 %type <expression>          expression
-// %type <expression>          aggregate_expr
-// %type <expression>          func_expr
+%type <expression>          aggr_func_expr
+%type <expression>          func_expr
+%type <expression_list>          group_by_expr
+%type <expression>          having_expr
 %type <expression_list>     expression_list
 %type <sql_node>            calc_stmt
 %type <sql_node>            select_stmt
@@ -426,7 +428,7 @@ value:
       char *tmp = common::substr($1,1,strlen($1)-2);
       Value *value = new Value(tmp);
       if (value->attr_type() == AttrType::UNDEFINED) {
-        yyerror(&@$,sql_string,sql_result,scanner,"date invaid", true);
+        yyerror(&@$,sql_string,sql_result,scanner,"date invaid");
         YYERROR;
       }
       else {
@@ -453,13 +455,13 @@ negative_value:
       @$ = @2;
     }
     ;
-// aggregate_type:
-//     MAX { $$ = AggregateType::MAX; }
-//     | MIN { $$ = AggregateType::MIN; }
-//     | AVG { $$ = AggregateType::AVG; }
-//     | SUM { $$ = AggregateType::SUM; }
-//     | COUNT { $$ = AggregateType::COUNT; }
-//     ;
+aggregate_type:
+    MAX { $$ = AggregateType::MAX; }
+    | MIN { $$ = AggregateType::MIN; }
+    | AVG { $$ = AggregateType::AVG; }
+    | SUM { $$ = AggregateType::SUM; }
+    | COUNT { $$ = AggregateType::COUNT; }
+    ;
 delete_stmt:    /*  delete 语句的语法解析树*/
     DELETE FROM ID where 
     {
@@ -487,7 +489,7 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM ID as_info rel_list where
+    SELECT expression_list FROM ID as_info rel_list where group_by_expr having_expr
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -510,15 +512,17 @@ select_stmt:        /*  select 语句的语法解析树*/
         $$->selection.conditions = $7;
       }
       free($4);
+      if ($8 != nullptr) {
+        std::reverse($8->begin(), $8->end());
+        $$->selection.groupby_exprs.swap(*$8);
+        delete $8;
+      }
+
+      if ($9 != nullptr) {
+        $$->selection.having_condition = $9;
+      }
     }
-    | SELECT expression_list
-    {
-      $$ = new ParsedSqlNode(SCF_SELECT);
-      std::reverse($2->begin(), $2->end());
-      $$->selection.proj_exprs.swap(*$2);
-      delete $2;
-    }
-    | SELECT expression_list from where
+    | SELECT expression_list from where group_by_expr having_expr
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -531,6 +535,16 @@ select_stmt:        /*  select 语句的语法解析树*/
 
       if ($4 != nullptr) {
         $$->selection.conditions = $4;
+      }
+
+      if ($5 != nullptr) {
+        std::reverse($5->begin(), $5->end());
+        $$->selection.groupby_exprs.swap(*$5);
+        delete $5;
+      }
+
+      if ($6 != nullptr) {
+        $$->selection.having_condition = $6;
       }
     }
     ;
@@ -595,8 +609,35 @@ join_on:
     }
     ;
 
+group_by_expr:
+    {
+      $$ = nullptr;
+    }
+    | GROUP_BY expression_list
+    {
+      $$ = $2;
+    }
+    ;
+
+having_expr:
+    {
+      $$ = nullptr;
+    }
+    | HAVING condition
+    {
+      $$ = $2;
+    }
+    ;
+
 calc_stmt:
     CALC expression_list
+    {
+      $$ = new ParsedSqlNode(SCF_CALC);
+      std::reverse($2->begin(), $2->end());
+      $$->calc.expressions.swap(*$2);
+      delete $2;
+    }
+    | SELECT expression_list
     {
       $$ = new ParsedSqlNode(SCF_CALC);
       std::reverse($2->begin(), $2->end());
@@ -658,40 +699,56 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
+    | aggr_func_expr{
+      $$ = $1;
+    }
+    | func_expr{
+      $$ = $1;
+    }
     ;
 
-// aggregate_expr:
-//     aggregate_type LBRACE expression RBRACE {
-      // $$ = $3;
-      // if ($3->relation_name  = "" && $3->attribute_name = "*") {
-      //   if ($1 == AggregateType::COUNT) {
-      //     $$->aggregate_type = AggregateType::COUNT_STAR;
-      //   }
-      // }
-      // $$->aggregate_type = $1;
-    // }
-    // ;
+aggr_func_expr:
+    aggregate_type LBRACE expression RBRACE {
+      AggregateType aggr_type = $1;
+      ValueExpr *value_expr;
+      if ($3->type() == ExprType::FIELD) {
+        FieldExpr *field_expr = static_cast<FieldExpr *>($3);
+        if (std::string(field_expr->field_name()) == "*") {
+          if (aggr_type == AggregateType::COUNT) {
+            aggr_type = AggregateType::COUNT_STAR;
+            value_expr = new ValueExpr(Value(1));
+            $$ = new AggrFunctionExpr(aggr_type, value_expr);
+          }
+          else {
+            yyerror(&@$,sql_string,sql_result,scanner,"'*' can only be used with COUNT");
+            YYERROR;
+          }
+        }
+        else {
+          $$ = new AggrFunctionExpr(aggr_type, $3);
+        }
+      }
+      $$->set_name(token_name(sql_string, &@$));
+    }
+    ;
 
-// func_expr:
-//     func_type LBRACE expression_list RBRACE {
-    //   $$ = $3;
-    //   $$->func_type = $1;
-    // }
-    // ;
+func_expr:
+    func_type LBRACE expression_list RBRACE {
+      std::reverse($3->begin(),$3->end());
+      $$ = new FuncExpr($1, *$3);
+      $$->set_name(token_name(sql_string, &@$));
+      delete $3;
+    }
+    ;
 
-// func_type:
-//     LENGTH { $$ = FunctionType::LENGTH; }
-//     | ROUND { $$ = FunctionType::ROUND; }
-//     | DATE_FORMAT { $$ = FunctionType::DATE_FORMAT; }
-//     ;
+func_type:
+    LENGTH { $$ = FunctionType::LENGTH; }
+    | ROUND { $$ = FunctionType::ROUND; }
+    | DATE_FORMAT { $$ = FunctionType::DATE_FORMAT; }
+    ;
 
 rel_attr:
     '*' {
-      $$ = new RelAttrSqlNode;
-      $$->relation_name  = "*";
-      $$->attribute_name = "*";
-    }
-    | '*' DOT '*' {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = "*";
       $$->attribute_name = "*";
@@ -715,109 +772,6 @@ rel_attr:
       free($3);
     }
     ;
-    // | LENGTH LBRACE rel_attr RBRACE {
-    //   $$ = $3;
-    //   $$->is_length_func = 1;
-    // }
-    // | ROUND LBRACE rel_attr RBRACE {
-    //   $$ = $3;
-    //   $$->is_round_func = 1;
-    //   $$->round_num = 0;
-    // }
-    // | ROUND LBRACE rel_attr COMMA NUMBER RBRACE{
-    //   $$ = $3;
-    //   $$->is_round_func = 1;
-    //   $$->round_num = $5;
-    // }
-    // | DATE_FORMAT LBRACE rel_attr COMMA SSS RBRACE {
-    //   char *date_format = common::substr($5, 1, strlen($5) - 2);
-    //   $$ = $3;
-    //   $$->date_format.assign(date_format);
-    //   free(date_format);
-    // }
-    // | aggregate_type LBRACE rel_attr RBRACE {
-    //   $$ = $3;
-    //   if ($3->relation_name  = "" && $3->attribute_name = "*") {
-    //     if ($1 == AggregateType::COUNT) {
-    //       $$->aggregate_type = AggregateType::COUNT_STAR;
-    //     }
-    //   }
-    //   $$->aggregate_type = $1;
-    // }
-    // | aggregate_type LBRACE RBRACE {
-    //   $$ = new RelAttrSqlNode();
-    //   $$->aggregate_type = $1;
-    //   $$->attribute_name = "*";
-    //   $$->relation_name = "*";
-    // }
-    // | aggregate_type LBRACE rel_attr COMMA rel_attr RBRACE {
-    //   $$ = new RelAttrSqlNode();
-    //   $$->relation_name  = "*";
-    //   $$->attribute_name = "*";
-    //   $$->aggregate_type = $1;
-    // }
-    // | func_for_imm {
-    //   $$ = $1;
-    // }
-    // ;
-
-// func_for_imm:
-//     LENGTH LBRACE SSS RBRACE {
-//       $$ = new RelAttrSqlNode();
-//       char *tmp = common::substr($3, 1, strlen($3) - 2);
-
-//       // 字符串长度，得到需要输出的别名和值
-//       Value len_val = Value(tmp);
-//       len_val.is_length_func_ = 1;
-//       $$->function_value = len_val.function_data();
-//       $$->is_length_func = 1;
-//       $$->alias_name = "LENGTH(" + string(tmp) + ")";
-
-//       free(tmp);
-//       free($3);
-//     }
-//     | ROUND LBRACE FLOAT RBRACE {
-//       $$ = new RelAttrSqlNode();
-
-//       // 四舍五入，得到需要输出的别名和值
-//       Value round_val = Value((float)$3);
-//       round_val.is_round_func_ = 1;
-//       round_val.round_num_ = 0;
-//       $$->function_value = round_val.function_data();
-//       $$->is_round_func = 1;
-//       $$->alias_name = "ROUND(" + std::to_string($3) + ")";
-//     }
-//     | ROUND LBRACE FLOAT COMMA NUMBER RBRACE {
-//       $$ = new RelAttrSqlNode();
-
-//       // 四舍五入，得到需要输出的别名和值
-//       Value round_val = Value((float)$3);
-//       round_val.is_round_func_ = 1;
-//       round_val.round_num_ = $5;
-//       $$->function_value = round_val.function_data();
-//       $$->is_round_func = 1;
-//       $$->round_num = $5;
-//       $$->alias_name = "ROUND(" + std::to_string($3) + ", " + std::to_string($5) + ")";
-//     }
-//     | DATE_FORMAT LBRACE DATE_STR COMMA SSS RBRACE {
-//       char *date_format = common::substr($5, 1, strlen($5) - 2);
-//       char *date_str = common::substr($3, 1, strlen($3) - 2);
-//       $$ = new RelAttrSqlNode();
-
-//       // 日期格式化，得到需要输出的别名和值
-//       Value format_date_val = Value(date_str);
-//       format_date_val.is_date_format_func_ = 1;
-//       $$->function_value = format_date_val.function_data(date_format);
-//       $$->date_format.assign(date_format);
-//       $$->alias_name = "DATE_FORMAT(" + string(date_str) + ", " + string(date_format) + ")";
-
-//       // 释放内存
-//       free(date_format);
-//       free(date_str);
-//       free($3);
-//       free($5);
-//     }
-//     ;
 
 as_info:
     {

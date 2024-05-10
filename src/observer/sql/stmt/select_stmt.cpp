@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/log/log.h"
 #include "common/rc.h"
+#include "sql/expr/expression.h"
 #include "sql/parser/parse_defs.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/db/db.h"
@@ -29,6 +30,14 @@ SelectStmt::~SelectStmt()
   if (nullptr != filter_stmt_) {
     delete filter_stmt_;
     filter_stmt_ = nullptr;
+  }
+    if (nullptr != groupby_stmt_) {
+    delete groupby_stmt_;
+    groupby_stmt_ = nullptr;
+  }
+  if (nullptr != having_filter_stmt_) {
+    delete having_filter_stmt_;
+    having_filter_stmt_ = nullptr;
   }
 }
 
@@ -111,31 +120,41 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   //   join_stmt.get()->condition() = condition_tmp;
   // }
 
+  bool has_aggregate_func = false;
   bool is_single_table = (tables.size() == 1);
   Table *default_table = nullptr;
   if (is_single_table) {
     default_table = tables[0];
   }
+
+  auto check_project_expr = [&table_map, &tables, &default_table, &has_aggregate_func](Expression *expr) -> RC {
+    // TODO add check for project expression
+    if (expr->type() == ExprType::FIELD) {
+      FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
+      if (field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+    else if (expr->type() == ExprType::FUNCTION) {
+      FuncExpr *func_expr = static_cast<FuncExpr*>(expr);
+      if (func_expr->check_function_param_type() != RC::SUCCESS) {
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+    }
+    else if (expr->type() == ExprType::AGGRFUNCTION) {
+      AggrFunctionExpr *agg_expr = static_cast<AggrFunctionExpr*>(expr);
+      if (agg_expr->check_aggregate_func_type() != RC::SUCCESS) {
+        return RC::SCHEMA_FIELD_MISSING;
+      }
+      has_aggregate_func = true;
+    }
+    return RC::SUCCESS;
+  };
+
   // projection in `select` statement
   std::vector<std::unique_ptr<Expression>> projects_query;
   for (int i = 0; i < static_cast<int>(select_sql.proj_exprs.size()); i++) {
     Expression *expr = select_sql.proj_exprs[i];
-    auto check_project_expr = [&table_map, &tables, &default_table](Expression *expr) -> RC {
-      // TODO add check for project expression
-      /* aggregation function: 对于count(a, b)和count()这种聚合函数调用的方法, 就要报错 -> Failure
-      * aggregation function: 对于count(*) 的特判，因为其它两个不支持
-      * function_type和aggregate_type的检查
-      * Aggregate function: select id, max(age) from student 这种混合使用是不考虑的
-      */
-      if (expr->type() == ExprType::FIELD) {
-        FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
-        if (field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
-          return RC::SCHEMA_FIELD_MISSING;
-        }
-      }
-      return RC::SUCCESS;
-    };
-
     ExprType expr_type = expr->type();
     if (expr_type == ExprType::FIELD) {
       FieldExpr  *field_expr = static_cast<FieldExpr*>(expr);
@@ -180,28 +199,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_sql.proj_exprs.clear();
   LOG_INFO("got %d tables in from stmt and %d fields in query stmt", tables.size(), projects_query.size());
 
-  // Aggregate function: select id, max(age) from student 这种混合使用是不考虑的
-  // for (long unsigned int i = 0; i < query_fields.size(); i++) {
-  //   if (query_fields[i].aggregate_type_ != AggregateType::NONE) {
-  //     for (long unsigned int j = i + 1; j < query_fields.size(); j++) {
-  //       if (query_fields[j].aggregate_type_ == AggregateType::NONE) {
-  //         LOG_WARN("invalid query field. The aggregate function cannot mix with other common fields.");
-  //         return RC::SCHEMA_FIELD_MISSING;
-  //       }
-  //     }
-  //     break;
-  //   } else {
-  //     for (long unsigned int j = i + 1; j < query_fields.size(); j++) {
-  //       if (query_fields[j].aggregate_type_ != AggregateType::NONE) {
-  //         LOG_WARN("invalid query field. The aggregate function cannot mix with other common fields.");
-  //         return RC::SCHEMA_FIELD_MISSING;
-  //       }
-  //     }
-  //     break;
-  //   }
-  // }
-
-
   // create filter statement in `where` statement
   FilterStmt * filter_stmt = nullptr;
   rc                      = FilterStmt::create(db,
@@ -214,13 +211,105 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return rc;
   }
 
+  GroupByStmt *groupby_stmt = nullptr;
+  FilterStmt *having_filter_stmt = nullptr;
+  if (!select_sql.groupby_exprs.empty() || has_aggregate_func) {
+    // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
+    std::vector<std::unique_ptr<AggrFunctionExpr>> aggr_exprs;
+    //select 子句中出现的所有 fieldexpr 都需要传递收集起来,
+    std::vector<std::unique_ptr<FieldExpr>> field_exprs;//这个 vector 需要传递给 order by 算子
+    std::vector<std::unique_ptr<Expression>> field_exprs_not_aggr; //select 后的所有非 aggrexpr 的 field_expr,用来判断语句是否合法 
+    // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
+    auto collect_aggr_exprs = [&aggr_exprs](Expression * expr) {
+      if (expr->type() == ExprType::AGGRFUNCTION) {
+        aggr_exprs.emplace_back(static_cast<AggrFunctionExpr*>(static_cast<AggrFunctionExpr*>(expr)->unique_ptr_copy().release()));
+      }
+    };
+    // 用于从 project exprs 中提取所有field expr,
+    auto collect_field_exprs = [&field_exprs](Expression * expr) {
+      if (expr->type() == ExprType::FIELD) {
+        field_exprs.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->unique_ptr_copy().release()));
+      }
+    };
+    // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
+    auto collect_exprs_not_aggexpr = [&field_exprs_not_aggr](Expression * expr) {
+        if (expr->type() == ExprType::FIELD) {
+        field_exprs_not_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->unique_ptr_copy().release()));
+      }
+    };
+    // do extract
+    for (auto& project : projects_query) {
+      project->traverse(collect_aggr_exprs, [](const Expression *) { return true; }); //提取所有 aggexpr
+      project->traverse(collect_field_exprs, [](const Expression *) { return true; }); //提取 select clause 中的所有 field_expr,传递给groupby stmt
+      //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+
+      //提取所有不在 aggexpr 中的 field_expr，用于语义检查
+      project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+    }
+
+    // 2. 创建 having filter stmt
+    if (select_sql.having_condition != nullptr) {
+      rc = FilterStmt::create(db, default_table, &table_map, select_sql.having_condition, having_filter_stmt);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("cannot construct having filter stmt");
+        return rc;
+      }
+      auto & filter_expr = having_filter_stmt->condition();
+      filter_expr->traverse(collect_aggr_exprs, [](const Expression *) { return true; });
+      filter_expr->traverse(collect_field_exprs, [](const Expression *) { return true; });
+      filter_expr->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+    }
+
+    // 3. AggrFunction 语义检查是否有字段和聚合函数混合使用（无group by时）
+    if (!field_exprs_not_aggr.empty() && select_sql.groupby_exprs.size() == 0) {
+      LOG_WARN("No Group By. But Has Fields Not In Aggr Func");
+      return RC::INVALID_ARGUMENT;
+    }
+
+    // 4. Group By 语义检查
+    if (!select_sql.groupby_exprs.empty()) {
+      // 4.1 Group By 的project exprs 语义检查，投影的非聚合函数表达式必须在 group by 中
+      for (auto & project_expr : projects_query) {
+        if (project_expr->type() == ExprType::AGGRFUNCTION) continue;
+        bool found = false;
+        for (auto & groupby_expr : select_sql.groupby_exprs) {
+          if (project_expr->name() == groupby_expr->name()) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          LOG_WARN("Group By Check Failure: Project Expression Not In Group By Clause");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+
+      // 4.2 Group by 使用的expression的合法性检查
+      for (auto & groupby_expr : select_sql.groupby_exprs) {
+        if (groupby_expr->traverse_check(check_project_expr) != RC::SUCCESS) {
+          LOG_WARN("Group By Check Failure: Group By Expression Check Failure");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+    }
+    // 5. 创建 groupby stmt
+    rc = GroupByStmt::create(
+      select_sql.groupby_exprs,
+      groupby_stmt,
+      std::move(aggr_exprs), 
+      std::move(field_exprs));
+    select_sql.groupby_exprs.clear();
+  }
+
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
-  // TODO add expression copy
   select_stmt->tables_.swap(tables);
   select_stmt->projects_query_.swap(projects_query);
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->join_stmt_.swap(join_stmt);
+  select_stmt->groupby_stmt_ = groupby_stmt;
+  select_stmt->having_filter_stmt_ = having_filter_stmt;
   stmt = select_stmt;
+
   return RC::SUCCESS;
 }

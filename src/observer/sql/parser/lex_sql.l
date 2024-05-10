@@ -99,6 +99,8 @@ TABLE                                   RETURN_TOKEN(TABLE);
 TABLES                                  RETURN_TOKEN(TABLES);
 INDEX                                   RETURN_TOKEN(INDEX);
 ON                                      RETURN_TOKEN(ON);
+GROUP[\ ]BY                             RETURN_TOKEN(GROUP_BY);
+HAVING                                  RETURN_TOKEN(HAVING);
 SHOW                                    RETURN_TOKEN(SHOW);
 SYNC                                    RETURN_TOKEN(SYNC);
 SELECT                                  RETURN_TOKEN(SELECT);

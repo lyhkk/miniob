@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include "gtest/gtest.h"
 #include <cxxabi.h>
 #include <memory>
 #include <string>
@@ -96,12 +97,16 @@ public:
   virtual AttrType value_type() const = 0;
 
   /**
+   * unique_ptr的释放
+   */
+  virtual std::unique_ptr<Expression> unique_ptr_copy() const = 0;
+  /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
    */
   virtual std::string name() const { return name_; }
   virtual void        set_name(std::string name) { name_ = name; }
   virtual std::string alias() const { return alias_; }
-  virtual void set_alias(std::string alias) { alias_ = alias; }
+  virtual void        set_alias(std::string alias) { alias_ = alias; }
 
 private:
   std::string name_;
@@ -122,6 +127,9 @@ public:
 
   virtual ~FieldExpr() = default;
 
+  std::unique_ptr<Expression> unique_ptr_copy() const override {
+    return std::unique_ptr<FieldExpr>(new FieldExpr(*this));
+  }
   ExprType type() const override { return ExprType::FIELD; }
   AttrType value_type() const override { return field_.attr_type(); }
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
@@ -143,6 +151,10 @@ private:
   Field field_;
   std::string table_name_;
   std::string field_name_;
+
+  // for GroupBy
+  int index_ = -1;
+  bool is_first_ = true;
 };
 
 /**
@@ -162,6 +174,10 @@ public:
   {
     value = value_;
     return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> unique_ptr_copy() const override {
+    return std::unique_ptr<ValueExpr>(new ValueExpr(*this));
   }
 
   ExprType type() const override { return ExprType::VALUE; }
@@ -192,8 +208,12 @@ public:
   AttrType value_type() const override { return cast_type_; }
 
   std::unique_ptr<Expression> &child() { return child_; }
+  std::unique_ptr<Expression> unique_ptr_copy() const override {
+    auto new_expr = std::make_unique<CastExpr>(child_->unique_ptr_copy(), cast_type_);
+    new_expr->set_name(name());
+    return new_expr;
+  }
 
-  
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     if (RC rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
@@ -238,6 +258,17 @@ public:
 
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
+
+  std::unique_ptr<Expression> unique_ptr_copy() const override {
+    std::unique_ptr<Expression> new_left_ = left_->unique_ptr_copy();
+    std::unique_ptr<Expression> new_right_ = nullptr;
+    if (right_ != nullptr) {
+      new_right_ = right_->unique_ptr_copy();
+    }
+    auto new_expr = std::make_unique<ComparisonExpr> (comp_, std::move(new_left_), std::move(new_right_));
+    new_expr->set_name(name());
+    return new_expr;
+  }
 
   /**
    * 尝试在没有tuple的情况下获取当前表达式的值
@@ -313,6 +344,17 @@ public:
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
 
+    std::unique_ptr<Expression> unique_ptr_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& child : children_) {
+      new_children.emplace_back(child->unique_ptr_copy());
+    }
+    auto new_expr = std::make_unique<ConjunctionExpr>(conjunction_type_, new_children);
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
     if (filter(this)) {
@@ -375,6 +417,18 @@ public:
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
 
+  std::unique_ptr<Expression> unique_ptr_copy() const override
+  {
+    std::unique_ptr<Expression> new_left = left_ ->unique_ptr_copy();
+    std::unique_ptr<Expression> new_right;
+    if (right_) { // NOTE: not has_rhs
+      new_right = right_->unique_ptr_copy();
+    }
+    auto new_expr = std::make_unique<ArithmeticExpr>(arithmetic_type_, std::move(new_left), std::move(new_right));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
     if (filter(this)) {
@@ -415,16 +469,32 @@ private:
 class AggrFunctionExpr : public Expression
 {
 public:
-  AggrFunctionExpr(AggregateType aggr_type, std::vector<std::unique_ptr<Expression>> &params);
+  AggrFunctionExpr() = default;
+  AggrFunctionExpr(AggregateType aggr_type, std::unique_ptr<Expression> &param);
+  AggrFunctionExpr(AggregateType aggr_type, Expression* param);
   virtual ~AggrFunctionExpr() = default;
 
+  std::unique_ptr<Expression> unique_ptr_copy() const override
+  {
+    std::unique_ptr<Expression> new_param;
+    if (param_) {
+      new_param = param_->unique_ptr_copy();
+    }
+    auto new_expr = std::make_unique<AggrFunctionExpr>(aggr_type_, new_param);
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
   ExprType type() const override { return ExprType::AGGRFUNCTION; }
-  AttrType value_type() const override;
+  AttrType value_type() const override { return get_aggr_attr_type(param_->value_type()); }
+  RC check_aggregate_func_type() const;
 
   RC get_value(const Tuple &tuple, Value &value) const override;
   RC try_get_value(Value &value) const override;
 
   AggregateType aggr_type() const { return aggr_type_; }
+  AggregateType &aggr_type() { return aggr_type_; }
+  AttrType get_aggr_attr_type(AttrType type) const;
 
   std::unique_ptr<Expression> &param() { return param_; }
 
@@ -444,29 +514,52 @@ public:
       return rc;
     }
     return RC::SUCCESS;
-  
   }
 
 private:
   AggregateType                            aggr_type_;
   std::unique_ptr<Expression>              param_;
+  bool                                     is_first_ = true;
+  int                                      index_ = -1;
 };
 
 class FuncExpr : public Expression
 {
 public:
-  FuncExpr(FunctionType func_type, std::vector<std::unique_ptr<Expression>> &params);
+  FuncExpr() = default;
+  FuncExpr(FunctionType func_type, std::vector<Expression*>& params);
+  FuncExpr(FunctionType func_type, std::vector<std::unique_ptr<Expression>>& params) : func_type_(func_type) {
+    for (auto& param : params) {
+      params_.emplace_back(std::move(param));
+    }
+  }
   virtual ~FuncExpr() = default;
 
   ExprType type() const override { return ExprType::FUNCTION; }
-  AttrType value_type() const override;
+  AttrType value_type() const override { 
+    assert(params_.size() != 0);
+    return get_func_attr_type(params_[0]->value_type()); 
+  }
 
   RC get_value(const Tuple &tuple, Value &value) const override;
   RC try_get_value(Value &value) const override;
 
   FunctionType func_type() const { return func_type_; }
+  AttrType get_func_attr_type(const AttrType type) const;
+  RC check_function_param_type() const;
 
   std::vector<std::unique_ptr<Expression>> &param() { return params_; }
+
+  std::unique_ptr<Expression> unique_ptr_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_params;
+    for (auto& param : params_) {
+      new_params.emplace_back(param->unique_ptr_copy());
+    }
+    auto new_expr = std::make_unique<FuncExpr>(func_type_, new_params);
+    new_expr->set_name(name());
+    return new_expr;
+  }
 
   void traverse(const std::function<void (Expression *)> &func, const std::function<bool(Expression *)> &filter) override {
     if (filter(this)) {

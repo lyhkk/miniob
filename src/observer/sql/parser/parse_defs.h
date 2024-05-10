@@ -21,12 +21,12 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/parser/value.h"
 
-enum class FunctionType
-{
-  LENGTH,
-  ROUND,
-  DATE_FORMAT,
-};
+// enum class FunctionType
+// {
+//   LENGTH,
+//   ROUND,
+//   DATE_FORMAT,
+// };
 
 class Expression;
 
@@ -46,29 +46,19 @@ struct RelAttrSqlNode
   std::string   relation_name;   ///< relation name (may be NULL) 表名
   std::string   attribute_name;  ///< attribute name              属性名
 
-  int           is_length_func;  ///< 是否是长度函数
-  int           is_round_func;   ///< 是否是round函数
-  std::string   date_format;     ///< 是否是date_format函数
-  int           round_num;       ///< round函数的参数
-  std::string   function_value;  ///< 如果select的是常量，这里记录常量输出的字符串
-  
-  AggregateType aggregate_type;  ///< 聚合函数类型
-
-  RelAttrSqlNode() : is_length_func(0), is_round_func(0), date_format(""), round_num(0),  function_value(""), 
-    aggregate_type(AggregateType::NONE) {}
-  AttrType get_func_attr_type(AttrType type) const
-  {  // function功能，需要修改type
-    if (is_length_func == 1) {
-      return AttrType::INTS;
-    } else if (is_round_func == 1 && round_num <= 0) {
-      return AttrType::INTS;
-    } else if (is_round_func == 1 && round_num > 0) {
-      return AttrType::FLOATS;
-    } else if (date_format != "") {
-      return AttrType::CHARS;
-    }
-    return type;
-  }
+  // AttrType get_func_attr_type(AttrType type) const
+  // {  // function功能，需要修改type
+  //   if (is_length_func == 1) {
+  //     return AttrType::INTS;
+  //   } else if (is_round_func == 1 && round_num <= 0) {
+  //     return AttrType::INTS;
+  //   } else if (is_round_func == 1 && round_num > 0) {
+  //     return AttrType::FLOATS;
+  //   } else if (date_format != "") {
+  //     return AttrType::CHARS;
+  //   }
+  //   return type;
+  // }
 };
 
 /**
@@ -138,6 +128,8 @@ struct SelectSqlNode
   std::vector<Expression *>     proj_exprs;  ///< expressions in the select clause
   JoinTableSqlNode             *table;       ///< 查询的表
   Expression                   *conditions = nullptr;       ///< 查询的条件
+  std::vector<Expression *>     groupby_exprs;  ///< group by clause
+  Expression                   *having_condition = nullptr;  ///< having clause
 };
 
 /**
@@ -297,7 +289,6 @@ struct ErrorSqlNode
   std::string error_msg;
   int         line;
   int         column;
-  bool        flag; // 标识是否是因为数据非法导致的错误，需要返回客户端Faliure
 };
 
 /**
