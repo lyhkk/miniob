@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "event/sql_event.h"
 #include "sql/executor/command_executor.h"
 #include "sql/operator/calc_physical_operator.h"
+#include "sql/operator/project_physical_operator.h"
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/stmt.h"
 
@@ -63,25 +64,33 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
   TupleSchema schema;
   switch (stmt->type()) {
     case StmtType::SELECT: {
-      SelectStmt *select_stmt     = static_cast<SelectStmt *>(stmt);
-      bool        with_table_name = select_stmt->tables().size() > 1;
+      // SelectStmt *select_stmt     = static_cast<SelectStmt *>(stmt);
+      // bool        with_table_name = select_stmt->tables().size() > 1;
 
-      for (const Field &field : select_stmt->query_fields()) {
-        if (with_table_name) {
-          // 这个alias是为了支持函数的别名
-          const char *alias = field.function_alias(field.table_name(), field.field_name());
-          if (alias != nullptr) {
-            schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-          } else {
-            schema.append_cell(field.table_name(), field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-          }
+      // for (const Field &field : select_stmt->query_fields()) {
+      //   if (with_table_name) {
+      //     // 这个alias是为了支持函数的别名
+      //     const char *alias = field.function_alias(field.table_name(), field.field_name());
+      //     if (alias != nullptr) {
+      //       schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+      //     } else {
+      //       schema.append_cell(field.table_name(), field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+      //     }
+      //   } else {
+      //     const char *alias = field.function_alias(nullptr, field.field_name());
+      //     if (alias != nullptr) {
+      //       schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+      //     } else {
+      //       schema.append_cell(field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
+      //     }
+      //   }
+      // }
+      ProjectPhysicalOperator *project_operator = static_cast<ProjectPhysicalOperator *>(physical_operator.get());
+      for (const unique_ptr<Expression> & expr : project_operator->projections()) {
+        if (expr->alias().empty()) {
+          schema.append_cell(expr->name().c_str());
         } else {
-          const char *alias = field.function_alias(nullptr, field.field_name());
-          if (alias != nullptr) {
-            schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-          } else {
-            schema.append_cell(field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-          }
+          schema.append_cell(expr->alias().c_str());
         }
       }
     } break;

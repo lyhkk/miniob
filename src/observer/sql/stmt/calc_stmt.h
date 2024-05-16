@@ -40,6 +40,12 @@ public:
   {
     CalcStmt *calc_stmt = new CalcStmt();
     for (Expression *const expr : calc_sql.expressions) {
+      if (expr->type() == ExprType::FUNCTION) {
+        FuncExpr *func_expr = static_cast<FuncExpr *>(expr);
+        if (func_expr->check_function_param_type() != RC::SUCCESS) {
+          return RC::INVALID_ARGUMENT;
+        }
+      }
       calc_stmt->expressions_.emplace_back(expr);
     }
     calc_sql.expressions.clear();

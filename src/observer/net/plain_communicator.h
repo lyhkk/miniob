@@ -33,7 +33,7 @@ public:
 
   RC read_event(SessionEvent *&event) override;
   RC write_result(SessionEvent *event, bool &need_disconnect) override;
-  RC write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) override;
+  // RC write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) override;
 
 private:
   RC write_state(SessionEvent *event, bool &need_disconnect);
