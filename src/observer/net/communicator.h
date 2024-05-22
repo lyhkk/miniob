@@ -63,7 +63,7 @@ public:
    *         是否需要断开连接
    */
   virtual RC write_result(SessionEvent *event, bool &need_disconnect) = 0;
-  virtual RC write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) = 0;
+  // virtual RC write_function_value(const SQLStageEvent *sql_event, bool &need_disconnect) = 0;
 
   /**
    * @brief 关联的会话信息

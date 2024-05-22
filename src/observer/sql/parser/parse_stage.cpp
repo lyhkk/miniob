@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #include <string.h>
 #include <string>
 
+#include "event/sql_debug.h"
 #include "parse_stage.h"
 
 #include "common/conf/ini.h"
@@ -27,28 +28,28 @@ See the Mulan PSL v2 for more details. */
 
 using namespace common;
 
-RC check_where_clause(ParsedSqlResult *sql_result)
-{
-  int is_right_illegal_date = 0;
-  for (auto &sql_node : sql_result->sql_nodes()) {
-    switch (sql_node->flag) {
-      case SCF_SELECT: {
-        for (auto sql_condition : sql_node.get()->selection.conditions) {
-          is_right_illegal_date = sql_condition.right_value.undefined_value();
-        }
-      }break;
-      case SCF_UPDATE: {
-        for (auto sql_condition : sql_node.get()->selection.conditions) {
-          is_right_illegal_date = sql_condition.right_value.undefined_value();
-        }
-      }
-      break;
-      default:
-        break;
-    }
-  }
-  return is_right_illegal_date == 1 ? RC::SQL_SYNTAX : RC::SUCCESS;
-}
+// RC check_where_clause(ParsedSqlResult *sql_result)
+// {
+//   int is_right_illegal_date = 0;
+//   for (auto &sql_node : sql_result->sql_nodes()) {
+//     switch (sql_node->flag) {
+//       case SCF_SELECT: {
+//         for (auto sql_condition : sql_node.get()->selection.conditions) {
+//           is_right_illegal_date = sql_condition.right_value.undefined_value();
+//         }
+//       }break;
+//       case SCF_UPDATE: {
+//         for (auto sql_condition : sql_node.get()->selection.conditions) {
+//           is_right_illegal_date = sql_condition.right_value.undefined_value();
+//         }
+//       }
+//       break;
+//       default:
+//         break;
+//     }
+//   }
+//   return is_right_illegal_date == 1 ? RC::SQL_SYNTAX : RC::SUCCESS;
+// }
 
 RC ParseStage::handle_request(SQLStageEvent *sql_event)
 {
@@ -61,10 +62,10 @@ RC ParseStage::handle_request(SQLStageEvent *sql_event)
 
   parse(sql.c_str(), &parsed_sql_result);
   // check date format, if date format is illegal, return error
-  if (check_where_clause(&parsed_sql_result) != RC::SUCCESS) {
-    sql_result->set_return_code(RC::INVALID_ARGUMENT);
-    return RC::INVALID_ARGUMENT;
-  }
+  // if (check_where_clause(&parsed_sql_result) != RC::SUCCESS) {
+  //   sql_result->set_return_code(RC::INVALID_ARGUMENT);
+  //   return RC::INVALID_ARGUMENT;
+  // }
   if (parsed_sql_result.sql_nodes().empty()) {
     sql_result->set_return_code(RC::SUCCESS);
     sql_result->set_state_string("");
@@ -80,19 +81,12 @@ RC ParseStage::handle_request(SQLStageEvent *sql_event)
     // set error information to event
     rc = RC::SQL_SYNTAX;
     sql_result->set_return_code(rc);
-    sql_result->set_state_string("Failed to parse sql");
+    sql_result->set_state_string("");
+    sql_debug("parse sql error, sql:%s", sql.c_str());
     return rc;
   }
 
   sql_event->set_sql_node(std::move(sql_node));
 
-  // 检查是否是 select function(immediate value)
-  // 只考虑全部query_field都是直接计算结果的function
-  if (sql_event->sql_node()->flag == SCF_SELECT) {
-    auto &attr = sql_event->sql_node()->selection.attributes[0]; 
-    if (attr.function_value != "") {
-      return RC::SELECT_FOR_COMPUTE;
-    }
-  }
   return RC::SUCCESS;
 }
