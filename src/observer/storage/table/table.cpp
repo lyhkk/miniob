@@ -591,7 +591,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
 
   if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
     LOG_WARN("update old value equals new value");
-    return RC::RECORD_DUPLICATE_KEY;
+    return RC::SUCCESS;
   }
   //写入新的值
   int record_size = table_meta_.record_size();
