@@ -39,6 +39,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/optimizer/physical_plan_generator.h"
 #include "sql/operator/groupby_logical_operator.h"
 #include "sql/operator/groupby_physical_operator.h"
+#include "sql/operator/orderby_logical_operator.h"
+#include "sql/operator/orderby_physical_operator.h"
 
 using namespace std;
 
@@ -85,6 +87,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
     case LogicalOperatorType::GROUPBY: {
       return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper);
+    }
+
+    case LogicalOperatorType::ORDERBY: {
+      return create_plan(static_cast<OrderByLogicalOperator &>(logical_operator), oper);
     }
     default: {
       return RC::INVALID_ARGUMENT;
@@ -348,6 +354,32 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, std:
     std::move(groupby_oper.aggr_exprs()),
     std::move(groupby_oper.field_exprs()));
   oper = unique_ptr<PhysicalOperator>(groupby_operator);
+
+  if (child_physical_oper) {
+    oper->add_child(std::move(child_physical_oper));
+  }
+
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &logical_operator, std::unique_ptr<PhysicalOperator> &oper) {
+  vector<unique_ptr<LogicalOperator>> &child_opers = logical_operator.children();
+  unique_ptr<PhysicalOperator> child_physical_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_physical_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create orderby logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  OrderByPhysicalOperator *orderby_operator = new OrderByPhysicalOperator(
+    std::move(logical_operator.orderby_units()),
+    std::move(logical_operator.proj_expressions()));
+  oper = unique_ptr<PhysicalOperator>(orderby_operator);
 
   if (child_physical_oper) {
     oper->add_child(std::move(child_physical_oper));

@@ -90,7 +90,7 @@ RC GroupByPhysicalOperator::next() {
           is_new_group_ = true;
         }
         i++;
-        std::vector<std::vector<int>> my_matrix(2, std::vector<int>(3));
+        // std::vector<std::vector<int>> my_matrix(2, std::vector<int>(3));
       }
     }
     if (is_new_group_) {

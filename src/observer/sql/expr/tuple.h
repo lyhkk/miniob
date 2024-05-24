@@ -377,6 +377,11 @@ private:
   Tuple *right_ = nullptr;
 };
 
+/**
+ * @brief group by的结果
+ * @ingroup Tuple
+ * @details 一个group by的结果，包含了group by的字段和聚合函数的结果
+ */
 class GroupTuple : public Tuple {
 public:
   GroupTuple() = default;
@@ -419,21 +424,10 @@ public:
     }
     return -1;
   }
-  // RC find_cell(std::string expr_name,Value &cell,int &index) const
-  // {
-  //   index = find_agg_index_by_name(expr_name);
-  //   if (index < 0 || index >= aggr_results_.size()) {
-  //     return RC::NOTFOUND;
-  //   }
-  //   cell = aggr_results_[index].result();
-  //   ////因为 GroupTuple 有两个存放结果的 vector ，所以给 aggr_results_ 返回的 index 加上一个偏移量
-  //   index += field_results_.size();
-  //   return RC::SUCCESS;
-  // }
 
   RC find_cell(const TupleCellSpec &spec, Value &cell, int& index) const override
   {
-    // 先从字段表达式里面找
+    // 先根据字段名从 field_exprs 里面找
     for (size_t i = 0; i < field_results_.size(); ++i) {
       const FieldExpr &expr = *field_results_[i].expr();
       if (std::string(expr.field_name()) == std::string(spec.field_name()) && 
@@ -444,14 +438,12 @@ public:
         return RC::SUCCESS;
       }
     }
-    // 找不到再根据别名从聚集函数表达式里面找
-    //return find_cell(std::string(spec.alias()), cell,index);
+    // 再根据字段名从 aggr_exprs 里面找
     index = find_agg_index_by_name(std::string(spec.alias()));
     if (index < 0 || (long unsigned int)index >= aggr_results_.size()) {
       return RC::NOTFOUND;
     }
     cell = aggr_results_[index].result();
-    ////因为 GroupTuple 有两个存放结果的 vector ，所以给 aggr_results_ 返回的 index 加上一个偏移量
     index += field_results_.size();
     return RC::SUCCESS;
   }
@@ -565,12 +557,12 @@ public:
           result_.add(temp);
         } break;
         case AggregateType::MAX: {
-          if (result_.compare(temp) == -1) {
+          if (result_.compare(temp) < 0) {
             result_ = temp;
           }
         } break;
         case AggregateType::MIN: {
-          if (result_.compare(temp) == 1) {
+          if (result_.compare(temp) > 0) {
             result_ = temp;
           }
         } break;
@@ -658,4 +650,79 @@ private:
   std::vector<AggrExprResults> aggr_results_;
   std::vector<FieldExprResults> field_results_;
   Tuple *tuple_ = nullptr;
+};
+
+/**
+ * @brief 排序后的元组
+ * @ingroup Tuple
+ * @details 在order by算子中使用
+ */
+class SortedTuple : public Tuple
+{
+public:
+  SortedTuple() = default;
+  virtual ~SortedTuple() = default;
+
+  void init(std::vector<std::unique_ptr<Expression>> &&exprs)
+  {
+    exprs_ = std::move(exprs);
+  }
+
+  int cell_num() const override
+  {
+    return cells_->size();
+  }
+
+  void set_cells(std::vector<Value> *cells)
+  {
+    cells_ = cells;
+  }
+
+  RC cell_at(int index, Value &cell) const override
+  {
+    if (index < 0 || index >= cell_num()) {
+      return RC::NOTFOUND;
+    }
+
+    cell = (*cells_)[index];
+    return RC::SUCCESS;
+  }
+
+  RC find_cell(const TupleCellSpec &spec, Value &cell, int &index) const override
+  {
+    for (size_t i = 0; i < exprs_.size(); ++i) {
+      // printf("exprs_.size() = %lld\n", exprs_.size());
+      // printf("cells_->size() = %lld\n", cells_->size());
+      assert(exprs_.size() == cells_->size());
+      if(exprs_[i]->type() == ExprType::FIELD){
+        const FieldExpr * expr =static_cast<FieldExpr*>(exprs_[i].get());
+        if (std::string(expr->field_name()) == std::string(spec.field_name()) && 
+          std::string(expr->table_name()) == std::string(spec.table_name()) ) {
+          cell = (*cells_)[i];
+          index = i;
+          return RC::SUCCESS;
+        }
+      }
+      else if(exprs_[i]->type() == ExprType::AGGRFUNCTION){
+        if(spec.alias() == exprs_[i]->name()){
+          cell = (*cells_)[i];
+          index = i;
+          return RC::SUCCESS;
+        }
+      }
+      else{
+        LOG_WARN("SortedTuple has no corresponding cell");
+        return RC::INTERNAL;
+      }
+    }
+    LOG_WARN("SortedTuple has no corresponding cell");
+    return RC::NOTFOUND;
+  }
+
+  std::vector<std::unique_ptr<Expression>> &exprs() { return exprs_; }
+  std::vector<Value> *cells() { return cells_; }
+
+private:
+  std::vector<std::unique_ptr<Expression>> exprs_;
+  std::vector<Value>                      *cells_ = nullptr;
 };
