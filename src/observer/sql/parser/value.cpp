@@ -242,6 +242,11 @@ int Value::like_type_compare(const Value &other) const
   return -1;  // TODO return rc?
 }
 
+/*
+ * @brief compare two values
+ * @param other the other value to compare
+ * @return 0 if equal, >0 if this > other, <0 if this < other
+ */
 int Value::compare(const Value &other) const
 {
   if (this->attr_type_ == other.attr_type_) {

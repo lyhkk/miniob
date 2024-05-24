@@ -10,7 +10,7 @@
 
 RC GroupByStmt::create(const std::vector<Expression*>& groupby_expr, GroupByStmt *&stmt,
     std::vector<std::unique_ptr<AggrFunctionExpr>> &&aggr_exprs,
-    std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)
+    std::vector<std::unique_ptr<FieldExpr>> &&field_exprs, OrderByStmt *sortby_stmt)
 {
   RC rc = RC::SUCCESS;
   stmt = nullptr;
@@ -24,5 +24,6 @@ RC GroupByStmt::create(const std::vector<Expression*>& groupby_expr, GroupByStmt
   stmt->aggr_exprs_ = std::move(aggr_exprs);
   stmt->field_exprs_ = std::move(field_exprs);
   stmt->groupby_exprs_ = std::move(groupby_exprs);
+  stmt->sortby_stmt_ = sortby_stmt;
   return rc;
 }
