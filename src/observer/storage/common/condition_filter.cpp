@@ -73,6 +73,9 @@ bool DefaultConditionFilter::filter(const Record &rec) const
   } else {
     right_value.set_value(right_.value);
   }
+  if (left_value.is_null() || right_value.is_null()) {
+    return false;
+  }
   if (comp_op_ == LIKE_OP) 
     return left_value.like_type_compare(right_value) == 0;
   if (comp_op_ == NOT_LIKE_OP) 

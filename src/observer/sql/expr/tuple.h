@@ -24,6 +24,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse.h"
 #include "sql/parser/value.h"
 #include "storage/record/record.h"
+#include "common/lang/bitmap.h"
 
 class Table;
 
@@ -134,7 +135,14 @@ public:
     speces_.clear();
   }
 
-  void set_record(Record *record) { this->record_ = record; }
+  void set_record(Record *record)
+  { 
+    this->record_ = record;
+    ASSERT(!this->speces_.empty(), "Empty rowtuple speces.");
+    const FieldMeta* null_field = this->speces_.front()->field().meta();
+    ASSERT(nullptr != null_field && CHARS == null_field->type(), "RowTuple gets null field failed.");
+    bitmap_.init(record->data() + null_field->offset(), null_field->len());
+  }
 
   void set_schema(const Table *table)
   {
@@ -159,15 +167,21 @@ public:
       return RC::INVALID_ARGUMENT;
     }
 
-    FieldExpr       *field_expr = speces_[index];
-    Field            field = field_expr->field();
-    const FieldMeta *field_meta = field.meta();
-    //AttrType         field_type = field.get_function_type();
+    if (bitmap_.get_bit(index)) {
+      cell.set_null();
+    }
 
-    cell.set_type(field_meta->type());
-    cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
-    // field.function_data(cell);
-    // cell.aggregate_type_ = field.aggregate_type_;
+    else {
+      FieldExpr       *field_expr = speces_[index];
+      Field            field = field_expr->field();
+      const FieldMeta *field_meta = field.meta();
+      //AttrType         field_type = field.get_function_type();
+
+      cell.set_type(field_meta->type());
+      cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+      // field.function_data(cell);
+      // cell.aggregate_type_ = field.aggregate_type_;
+    }
     return RC::SUCCESS;
   }
 
@@ -208,6 +222,7 @@ public:
 
 private:
   Record                  *record_ = nullptr;
+  common::Bitmap           bitmap_;
   const Table             *table_  = nullptr;
   std::vector<FieldExpr *> speces_;
 };

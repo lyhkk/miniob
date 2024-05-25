@@ -76,6 +76,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         GROUP_BY
         HAVING
         UPDATE
+        IS
+        NOT
+        NULL_T
         LENGTH
         ROUND
         DATE_FORMAT
@@ -136,6 +139,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   char *                            string;
   int                               number;
   float                             floats;
+  bool                              boolean;
 }
 
 %token <string> DATE_STR
@@ -151,6 +155,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <value>               value
 %type <value>               negative_value
 %type <number>              number
+%type <boolean>             is_null_comp
+%type <boolean>             null_option
 %type <comp>                comp_op
 %type <comp>                exists_op
 %type <expression>          where
@@ -349,21 +355,36 @@ attr_def_list:
     ;
     
 attr_def:
-    ID type LBRACE number RBRACE 
+    ID type LBRACE number RBRACE null_option
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = $6;
       free($1);
     }
-    | ID type
+    | ID type null_option
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = $3;
       free($1);
+    }
+    ;
+null_option:
+    {
+      $$ = true;
+    }
+    | NULL_T
+    {
+      $$ = true;
+    }
+    | NOT NULL_T
+    {
+      $$ = false;
     }
     ;
 number:
@@ -442,6 +463,10 @@ value:
       $$ = new Value(tmp);
       free(tmp);
       free($1);
+    }
+    | NULL_T {
+      $$ = new Value();
+      $$->set_null();
     }
     ;
 
@@ -811,10 +836,26 @@ where:
       $$ = $2;  
     }
     ;
-
+is_null_comp:
+    IS NULL_T
+    {
+      $$ = true;
+    }
+    | IS NOT NULL_T
+    {
+      $$ = false;
+    }
+    ;
 condition:
     expression comp_op expression {
       $$ = new ComparisonExpr($2, $1, $3);
+    }
+    | expression is_null_comp
+    {
+      Value val;
+      val.set_null();
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($2 ? IS_NULL : IS_NOT_NULL, $1, value_expr);
     }
     | condition AND condition {
       $$ = new ConjunctionExpr(ConjunctionExpr::Type::AND, $1, $3);

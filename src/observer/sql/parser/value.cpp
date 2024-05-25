@@ -21,11 +21,11 @@ See the Mulan PSL v2 for more details. */
 #include <regex>
 #include <cmath>
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates", "ints", "floats", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "dates", "floats","nulls", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
-  if (type >= UNDEFINED && type <= FLOATS) {
+  if (type >= UNDEFINED && type <= NULLS) {
     return ATTR_TYPE_NAME[type];
   }
   return "unknown";
@@ -165,6 +165,9 @@ void Value::set_value(const Value &value)
     case DATES: {
       set_date(value.get_int());
     } break;
+    case NULLS: {
+      set_null();
+    } break;
     case BOOLEANS: {
       set_boolean(value.get_boolean());
     } break;
@@ -209,6 +212,9 @@ std::string Value::to_string() const
       else
         os << d;
     } break;
+    case NULLS: {
+      os << "NULL";
+    } break;
     case BOOLEANS: {
       os << num_value_.bool_value_;
     } break;
@@ -244,6 +250,7 @@ int Value::like_type_compare(const Value &other) const
 
 int Value::compare(const Value &other) const
 {
+  ASSERT(!this->is_null() && !other.is_null(), "Comparable values couldn't be null.");
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
       case INTS: {
