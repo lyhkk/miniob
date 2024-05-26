@@ -62,7 +62,6 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         INDEX
         CALC
         SELECT
-        DESC
         SHOW
         SYNC
         INSERT
@@ -75,7 +74,13 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         NOT_EXISTS
         GROUP_BY
         HAVING
+        ORDER_BY
+        ASC
+        DESC
         UPDATE
+        IS
+        NOT
+        NULL_T
         LENGTH
         ROUND
         DATE_FORMAT
@@ -131,11 +136,14 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   FunctionType                      function_type;
   Expression *                      expression;
   std::vector<Expression *> *       expression_list;
+  OrderBySqlNode*                   orderby_unit;
+  std::vector<OrderBySqlNode>*     orderby_unit_list;
   std::vector<Value> *              value_list;
   JoinTableSqlNode *                relation_list;
   char *                            string;
   int                               number;
   float                             floats;
+  bool                              boolean;
 }
 
 %token <string> DATE_STR
@@ -151,6 +159,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <value>               value
 %type <value>               negative_value
 %type <number>              number
+%type <boolean>             is_null_comp
+%type <boolean>             null_option
 %type <comp>                comp_op
 %type <comp>                exists_op
 %type <expression>          where
@@ -169,7 +179,10 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <expression>          expression
 %type <expression>          aggr_func_expr
 %type <expression>          func_expr
-%type <expression_list>          group_by_expr
+%type <expression_list>     group_by_expr
+%type <orderby_unit>        sort_unit
+%type <orderby_unit_list>   sort_list
+%type <orderby_unit_list>   order_by_list
 %type <expression>          having_expr
 %type <expression_list>     expression_list
 %type <sql_node>            calc_stmt
@@ -349,21 +362,36 @@ attr_def_list:
     ;
     
 attr_def:
-    ID type LBRACE number RBRACE 
+    ID type LBRACE number RBRACE null_option
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = $6;
       free($1);
     }
-    | ID type
+    | ID type null_option
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = $3;
       free($1);
+    }
+    ;
+null_option:
+    {
+      $$ = true;
+    }
+    | NULL_T
+    {
+      $$ = true;
+    }
+    | NOT NULL_T
+    {
+      $$ = false;
     }
     ;
 number:
@@ -390,7 +418,51 @@ insert_stmt:        /*insert   语句的语法解析树*/
       free($3);
     }
     ;
-
+order_by_list:
+	/* empty */ {
+    $$ = nullptr;
+  }
+	| ORDER_BY sort_list
+	{
+    $$ = $2;
+    std::reverse($$->begin(),$$->end());
+	}
+	;
+sort_unit:
+    expression ASC
+    {
+      $$ = new OrderBySqlNode;
+      $$->expr = $1;
+      $$->is_asc = true;
+    }
+    | expression DESC
+    {
+      $$ = new OrderBySqlNode;
+      $$->expr = $1;
+      $$->is_asc = false;
+    }
+    | expression
+    {
+      $$ = new OrderBySqlNode;
+      $$->expr = $1;
+      $$->is_asc = true;
+    }
+    ;
+sort_list:
+	sort_unit
+	{
+    $$ = new std::vector<OrderBySqlNode>;
+    $$->emplace_back(*$1);
+    delete $1;
+	}
+  |
+	sort_unit COMMA sort_list
+	{
+    $3->emplace_back(*$1);
+    $$ = $3;
+    delete $1;
+	}
+	;
 value_list:
     /* empty */
     {
@@ -443,6 +515,10 @@ value:
       free(tmp);
       free($1);
     }
+    | NULL_T {
+      $$ = new Value();
+      $$->set_null();
+    }
     ;
 
 negative_value:
@@ -489,7 +565,7 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM ID as_info rel_list where group_by_expr having_expr
+    SELECT expression_list FROM ID as_info rel_list where group_by_expr having_expr order_by_list
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -521,8 +597,13 @@ select_stmt:        /*  select 语句的语法解析树*/
       if ($9 != nullptr) {
         $$->selection.having_condition = $9;
       }
+
+      if ($10 != nullptr) {
+        $$->selection.orderby_nodes.swap(*$10);
+        delete $10;
+      }
     }
-    | SELECT expression_list from where group_by_expr having_expr
+    | SELECT expression_list from where group_by_expr having_expr order_by_list
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -545,6 +626,11 @@ select_stmt:        /*  select 语句的语法解析树*/
 
       if ($6 != nullptr) {
         $$->selection.having_condition = $6;
+      }
+
+      if ($7 != nullptr) {
+        $$->selection.orderby_nodes.swap(*$7);
+        delete $7;
       }
     }
     ;
@@ -811,10 +897,26 @@ where:
       $$ = $2;  
     }
     ;
-
+is_null_comp:
+    IS NULL_T
+    {
+      $$ = true;
+    }
+    | IS NOT NULL_T
+    {
+      $$ = false;
+    }
+    ;
 condition:
     expression comp_op expression {
       $$ = new ComparisonExpr($2, $1, $3);
+    }
+    | expression is_null_comp
+    {
+      Value val;
+      val.set_null();
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($2 ? IS_NULL : IS_NOT_NULL, $1, value_expr);
     }
     | condition AND condition {
       $$ = new ConjunctionExpr(ConjunctionExpr::Type::AND, $1, $3);

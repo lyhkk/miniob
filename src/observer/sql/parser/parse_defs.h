@@ -21,14 +21,8 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/parser/value.h"
 
-// enum class FunctionType
-// {
-//   LENGTH,
-//   ROUND,
-//   DATE_FORMAT,
-// };
-
 class Expression;
+class OrderByUnit;
 
 /**
  * @defgroup SQLParser SQL Parser
@@ -45,20 +39,6 @@ struct RelAttrSqlNode
 {
   std::string   relation_name;   ///< relation name (may be NULL) 表名
   std::string   attribute_name;  ///< attribute name              属性名
-
-  // AttrType get_func_attr_type(AttrType type) const
-  // {  // function功能，需要修改type
-  //   if (is_length_func == 1) {
-  //     return AttrType::INTS;
-  //   } else if (is_round_func == 1 && round_num <= 0) {
-  //     return AttrType::INTS;
-  //   } else if (is_round_func == 1 && round_num > 0) {
-  //     return AttrType::FLOATS;
-  //   } else if (date_format != "") {
-  //     return AttrType::CHARS;
-  //   }
-  //   return type;
-  // }
 };
 
 /**
@@ -79,6 +59,8 @@ enum CompOp
   NOT_EXISTS_OP,///< "NOT EXISTS"
   IN_OP,        ///< "IN"
   NOT_IN_OP,    ///< "NOT IN"
+  IS_NULL,      ///< "IS NULL"
+  IS_NOT_NULL,  ///< "IS NOT NULL"
   NO_OP
 };
 
@@ -116,6 +98,15 @@ struct JoinTableSqlNode
 };
 
 /**
+ * @brief Order by clause
+ * @ingroup SQLParser
+ */
+struct OrderBySqlNode {
+  Expression    *expr; 
+  bool           is_asc = true;  ///< true for asc, false for de
+};
+
+/**
  * @brief 描述一个select语句
  * @ingroup SQLParser
  * @details 一个正常的select语句描述起来比这个要复杂很多，这里做了简化。
@@ -129,6 +120,7 @@ struct SelectSqlNode
   JoinTableSqlNode             *table;       ///< 查询的表
   Expression                   *conditions = nullptr;       ///< 查询的条件
   std::vector<Expression *>     groupby_exprs;  ///< group by clause
+  std::vector<OrderBySqlNode>   orderby_nodes;  ///< order by clause
   Expression                   *having_condition = nullptr;  ///< having clause
 };
 
@@ -188,6 +180,7 @@ struct AttrInfoSqlNode
   AttrType    type;    ///< Type of attribute
   std::string name;    ///< Attribute name
   size_t      length;  ///< Length of attribute
+  bool        nullable; //< 是否可为NULL
 };
 
 /**

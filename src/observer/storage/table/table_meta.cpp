@@ -22,6 +22,7 @@ See the Mulan PSL v2 for more details. */
 #include "json/json.h"
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 using namespace std;
 
@@ -65,23 +66,26 @@ RC TableMeta::init(int32_t table_id, const char *name, int field_num, const Attr
 
   const vector<FieldMeta> *trx_fields = TrxKit::instance()->trx_fields();
   if (trx_fields != nullptr) {
-    fields_.resize(field_num + trx_fields->size());
+     trx_field_num = static_cast<int>(trx_fields->size());
+  }
+  int sys_field_num = trx_field_num + 1;
+  fields_.resize(sys_field_num + field_num);
+  int null_len = (sys_field_num + field_num + 7) / 8;
+  fields_[0] = FieldMeta("__null", CHARS, 0, null_len, false, false);
+  field_offset += null_len;
 
+  if (trx_fields != nullptr) {
     for (size_t i = 0; i < trx_fields->size(); i++) {
       const FieldMeta &field_meta = (*trx_fields)[i];
-      fields_[i] = FieldMeta(field_meta.name(), field_meta.type(), field_offset, field_meta.len(), false /*visible*/);
+      fields_[i + 1] = FieldMeta(field_meta.name(), field_meta.type(), field_offset, field_meta.len(), false, field_meta.nullable());
       field_offset += field_meta.len();
     }
-
-    trx_field_num = static_cast<int>(trx_fields->size());
-  } else {
-    fields_.resize(field_num);
   }
 
   for (int i = 0; i < field_num; i++) {
     const AttrInfoSqlNode &attr_info = attributes[i];
-    rc                               = fields_[i + trx_field_num].init(
-        attr_info.name.c_str(), attr_info.type, field_offset, attr_info.length, true /*visible*/);
+    rc                               = fields_[i + sys_field_num].init(
+        attr_info.name.c_str(), attr_info.type, field_offset, attr_info.length, true /*visible*/, attr_info.nullable);
     if (rc != RC::SUCCESS) {
       LOG_ERROR("Failed to init field meta. table name=%s, field name: %s", name, attr_info.name.c_str());
       return rc;
@@ -106,11 +110,11 @@ RC TableMeta::add_index(const IndexMeta &index)
 
 const char *TableMeta::name() const { return name_.c_str(); }
 
-const FieldMeta *TableMeta::trx_field() const { return &fields_[0]; }
+const FieldMeta *TableMeta::null_field() const { return &fields_[0]; }
 
 const std::pair<const FieldMeta *, int> TableMeta::trx_fields() const
 {
-  return std::pair<const FieldMeta *, int>{fields_.data(), sys_field_num()};
+  return std::pair<const FieldMeta *, int>{fields_.data() + 1, trx_field_num()};
 }
 
 const FieldMeta *TableMeta::field(int index) const { return &fields_[index]; }
@@ -138,13 +142,18 @@ const FieldMeta *TableMeta::find_field_by_offset(int offset) const
 }
 int TableMeta::field_num() const { return fields_.size(); }
 
-int TableMeta::sys_field_num() const
+int TableMeta::trx_field_num() const
 {
   const vector<FieldMeta> *trx_fields = TrxKit::instance()->trx_fields();
   if (nullptr == trx_fields) {
     return 0;
   }
   return static_cast<int>(trx_fields->size());
+}
+
+int TableMeta::sys_field_num() const
+{
+  return trx_field_num() + 1;
 }
 
 const IndexMeta *TableMeta::index(const char *name) const
