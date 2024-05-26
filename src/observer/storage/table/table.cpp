@@ -614,7 +614,6 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
       memcpy(new_value, value->data(), value->length());
       memset(new_value + value->length(), '\0', field_length - value->length());
     }
-
     if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
       LOG_WARN("update old value equals new value");
       return RC::SUCCESS;

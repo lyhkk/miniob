@@ -95,6 +95,8 @@ NOT[\ ]EXISTS                           RETURN_TOKEN(NOT_EXISTS);
 EXISTS                                  RETURN_TOKEN(EXISTS);
 NOT[\ ]LIKE                             RETURN_TOKEN(NOT_LIKE);
 LIKE                                    RETURN_TOKEN(LIKE);
+ORDER[\ ]BY                             RETURN_TOKEN(ORDER_BY);
+ASC                                     RETURN_TOKEN(ASC);
 TABLE                                   RETURN_TOKEN(TABLE);
 TABLES                                  RETURN_TOKEN(TABLES);
 INDEX                                   RETURN_TOKEN(INDEX);

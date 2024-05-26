@@ -248,6 +248,11 @@ int Value::like_type_compare(const Value &other) const
   return -1;  // TODO return rc?
 }
 
+/*
+ * @brief compare two values
+ * @param other the other value to compare
+ * @return 0 if equal, >0 if this > other, <0 if this < other
+ */
 int Value::compare(const Value &other) const
 {
   ASSERT(!this->is_null() && !other.is_null(), "Comparable values couldn't be null.");
