@@ -29,6 +29,7 @@ enum AttrType
   INTS,      ///< 整数类型(4字节)
   DATES,   ///< 日期类型
   FLOATS,    ///< 浮点数类型(4字节)
+  NULLS,   ///< NULL
   BOOLEANS,  ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };
 
@@ -78,6 +79,9 @@ public:
   Value(const Value &other)            = default;
   Value &operator=(const Value &other) = default;
 
+  void set_null() { this->attr_type_ = NULLS; }
+  bool is_null() const { return this->attr_type_ == NULLS; }
+  bool is_string() const { return this->attr_type_ == CHARS; }
   void set_type(AttrType type) { this->attr_type_ = type; }
   void set_data(char *data, int length);
   void set_data(const char *data, int length) { this->set_data(const_cast<char *>(data), length); }

@@ -158,6 +158,16 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
   RC  rc         = RC::SUCCESS;
   result         = false;
 
+  if (comp_ == IS_NULL || comp_ == IS_NOT_NULL) {
+    ASSERT(right.is_null(), "Right-hand side shoule be null.");
+    result = comp_ == IS_NULL ? left.is_null() : !left.is_null();
+    return rc;
+  }
+  if (left.is_null() || right.is_null()) {
+    result = false;
+    return rc;
+  }
+
   if (comp_ == LIKE_OP) {
     result = (left.like_type_compare(right) == 0);
   }
