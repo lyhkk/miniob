@@ -307,6 +307,9 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value     &value = values[i];
+    if (value.is_null() && field->nullable()) {
+      continue;
+    }
     if (field->type() != value.attr_type()) {
       LOG_ERROR("Invalid value type. table name =%s, field name=%s, type=%d, but given=%d",
                 table_meta_.name(), field->name(), field->type(), value.attr_type());
@@ -318,9 +321,18 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   int   record_size = table_meta_.record_size();
   char *record_data = (char *)malloc(record_size);
 
+  // 处理null field
+  const FieldMeta* null_field = table_meta_.null_field();
+  common::Bitmap null_bitmap(record_data + null_field->offset(), null_field->len());
+  null_bitmap.clear_bits();
+
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field    = table_meta_.field(i + normal_field_start_index);
     const Value     &value    = values[i];
+    if (value.is_null()) {
+      null_bitmap.set_bit(normal_field_start_index + i);
+      continue;
+    }
     size_t           copy_len = field->len();
     if (field->type() == CHARS) {
       const size_t data_len = value.length();
@@ -549,6 +561,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
   
   int field_offset = -1;
   int field_length = -1;
+  int field_index  = -1;
   bool is_index = false;//标识当前列上是否有索引
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
@@ -560,7 +573,10 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
     }
     AttrType attr_type= field_meta->type();
     AttrType value_type = value->attr_type();
-    if(attr_type != value_type) {
+    if(field_meta->nullable() && value->is_null()) {
+      //empty
+    }
+    else if(attr_type != value_type) {
       LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
           name(),
           field_meta->name(),
@@ -570,6 +586,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
     }
     field_offset = field_meta->offset();
     field_length = field_meta->len();
+    field_index  = sys_field_num + i;
     if (nullptr != find_index_by_field(field_name)) {
       is_index = true;
     }
@@ -580,25 +597,42 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
       return RC::SCHEMA_FIELD_NOT_EXIST;
   }
 
+  const FieldMeta* null_field = table_meta_.null_field();
+  common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
   char *new_value = new char[field_length + 1];
-  if(value->length() == field_length) {
-    memcpy(new_value, value->data(), value->length());
+  if (value->is_null()) {
+    if (old_null_bitmap.get_bit(field_index)) {
+      LOG_WARN("update old value equals new value");
+      return RC::SUCCESS;
+    }
   }
   else {
-    memcpy(new_value, value->data(), value->length());
-    memset(new_value + value->length(), '\0', field_length - value->length());
+    if(value->length() == field_length) {
+      memcpy(new_value, value->data(), value->length());
+    }
+    else {
+      memcpy(new_value, value->data(), value->length());
+      memset(new_value + value->length(), '\0', field_length - value->length());
+    }
+    if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
+      LOG_WARN("update old value equals new value");
+      return RC::SUCCESS;
+    }
   }
-
-  if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
-    LOG_WARN("update old value equals new value");
-    return RC::SUCCESS;
-  }
+  
   //写入新的值
   int record_size = table_meta_.record_size();
   char *old_data = record.data();
   char *data = new char[record_size];
   memcpy(data, old_data, record_size);
-  memcpy(data + field_offset, new_value, field_length);
+  common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());
+  if (value->is_null()) {
+    new_null_bitmap.set_bit(field_index);
+  }
+  else {
+    new_null_bitmap.clear_bit(field_index);
+    memcpy(data + field_offset, new_value, field_length);
+  }
   record.set_data(data);
   if(is_index)
   {
