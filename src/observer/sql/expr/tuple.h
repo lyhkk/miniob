@@ -379,7 +379,7 @@ public:
     }
 
     rc = right_->find_cell(spec, value, index);
-    if (rc == RC::SUCCESS || rc != RC::NOTFOUND) {
+    if (rc != RC::SUCCESS) {
       return rc;
     }
 
