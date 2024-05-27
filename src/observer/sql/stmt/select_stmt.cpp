@@ -115,9 +115,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
     join_stmt_tmp = join_stmt_tmp->sub_join().get();
   }
-  ConjunctionExpr *conditionExpr = new ConjunctionExpr(ConjunctionExpr::Type::AND, condition);
-  join_stmt.get()->set_condition(std::unique_ptr<Expression>(conditionExpr));
-
+  if (!condition.empty()) {
+    ConjunctionExpr *conditionExpr = new ConjunctionExpr(ConjunctionExpr::Type::AND, condition);
+    join_stmt.get()->set_condition(std::unique_ptr<Expression>(conditionExpr));
+  }
 
   bool has_aggregate_func = false;
   bool is_single_table = (tables.size() == 1);
