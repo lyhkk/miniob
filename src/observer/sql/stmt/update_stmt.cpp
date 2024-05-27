@@ -19,11 +19,9 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include <utility>
 
-UpdateStmt::UpdateStmt(Table *table, const Value *values, int value_amount,FieldMeta field,FilterStmt * filter_stmt)
-    : table_(table), values_(values), value_amount_(value_amount),filter_stmt_(filter_stmt)
-{
-  fields_.push_back(field);
-}
+UpdateStmt::UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<Value*> values, FilterStmt *filter_stmt)
+  : table_(table), fields_(std::move(fields)), values_(std::move(values)), filter_stmt_(filter_stmt)
+{}
 
 UpdateStmt::~UpdateStmt()
 {
@@ -39,7 +37,12 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   if (nullptr == db || nullptr == table_name) {
     LOG_WARN("invalid update argument. db=%p, table_name=%p", db, table_name);
     return RC::INVALID_ARGUMENT;
-  } 
+  }
+
+  if (update.attribute_names.size() != update.values.size()) {
+    LOG_WARN("invalid update argument. attribute amount does not match value amount");
+    return RC::INVALID_ARGUMENT;
+  }
 
   // check whether the table exists
   Table *table = db->find_table(table_name);
@@ -48,28 +51,27 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
+  std::vector<Value*> values;
+  std::vector<FieldMeta> fields;
   const TableMeta &table_meta = table->table_meta();
-  const std::vector<FieldMeta>* fieldMeta = table_meta.field_metas();
-  bool valid = false;
-  FieldMeta update_field;
-  for ( FieldMeta field :*fieldMeta) {
-    if( 0 == strcmp(field.name(),update.attribute_name.c_str()))
-    {
-      if(field.type() == update.value.attr_type() || (field.nullable() && update.value.is_null()))
-      {
-        if(field.type() == CHARS && field.len() < update.value.length())
-        {
-            return RC::INVALID_ARGUMENT;
+  for (size_t i = 0; i < update.attribute_names.size(); i++) {
+    const FieldMeta* update_field = table_meta.field(update.attribute_names[i].c_str());
+    bool valid = false;
+    if (nullptr != update_field) {
+      if (update_field->type() == update.values[i].attr_type() || (update.values[i].is_null() && update_field->nullable())) {
+        if (update_field->type() == CHARS && update_field->len() < update.values[i].length()) {
+          LOG_WARN("update chars with longer length");
+        } else {
+          valid = true;
         }
-        valid = true;
-        update_field = field;
-        break;
       }
     }
-  }
-  if(!valid) {
-    LOG_WARN("update field type mismatch. table=%s",table_name);
-    return RC::INVALID_ARGUMENT;
+    if(!valid) {
+      LOG_WARN("update field type mismatch. table=%s",table_name);
+      return RC::INVALID_ARGUMENT;
+    }
+    fields.emplace_back(*update_field);
+    values.emplace_back(const_cast<Value*>(&update.values[i]));
   }
 
   std::unordered_map<std::string, Table *> table_map;
@@ -82,6 +84,6 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return rc;
   }
   // everything alright
-  stmt = new UpdateStmt(table, &(update.value), 1, update_field,filter_stmt);
+  stmt = new UpdateStmt(table, std::move(fields), std::move(values), filter_stmt);
   return RC::SUCCESS;
 }

@@ -149,6 +149,8 @@ union YYSTYPE
   FunctionType                      function_type;
   Expression *                      expression;
   std::vector<Expression *> *       expression_list;
+  UpdateKV *                        update_kv;
+  std::vector<UpdateKV> *           update_kv_list;
   OrderBySqlNode*                   orderby_unit;
   std::vector<OrderBySqlNode>*     orderby_unit_list;
   std::vector<Value> *              value_list;
@@ -158,7 +160,7 @@ union YYSTYPE
   float                             floats;
   bool                              boolean;
 
-#line 162 "yacc_sql.hpp"
+#line 164 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -136,6 +136,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   FunctionType                      function_type;
   Expression *                      expression;
   std::vector<Expression *> *       expression_list;
+  UpdateKV *                        update_kv;
+  std::vector<UpdateKV> *           update_kv_list;
   OrderBySqlNode*                   orderby_unit;
   std::vector<OrderBySqlNode>*     orderby_unit_list;
   std::vector<Value> *              value_list;
@@ -185,6 +187,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <orderby_unit_list>   order_by_list
 %type <expression>          having_expr
 %type <expression_list>     expression_list
+%type <update_kv>           update_kv
+%type <update_kv_list>      update_kv_list
 %type <sql_node>            calc_stmt
 %type <sql_node>            select_stmt
 %type <sql_node>            insert_stmt
@@ -551,17 +555,51 @@ delete_stmt:    /*  delete 语句的语法解析树*/
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET ID EQ value where 
+    UPDATE ID SET update_kv update_kv_list where 
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
-      $$->update.attribute_name = $4;
-      $$->update.value = *$6;
-      if ($7 != nullptr) {
-        $$->update.conditions = $7;
+      $$->update.attribute_names.emplace_back($4->attribute_name);
+      $$->update.values.emplace_back($4->value);
+      if (nullptr != $5) {
+        for (UpdateKV kv : *$5) {
+          $$->update.attribute_names.emplace_back(kv.attribute_name);
+          $$->update.values.emplace_back(kv.value);
+        }
+        delete $5;
+      }
+      $$->update.conditions = nullptr;
+      if ($6 != nullptr) {
+        $$->update.conditions = $6;
       }
       free($2);
-      free($4);
+      delete $4;
+    }
+    ;
+update_kv_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA update_kv update_kv_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<UpdateKV>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
+    }
+    ;
+update_kv:
+    ID EQ value
+    {
+      $$ = new UpdateKV;
+      $$->attribute_name = $1;
+      $$->value = *$3;
+      free($1);
+      delete($3);
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/

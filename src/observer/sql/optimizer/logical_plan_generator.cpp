@@ -363,10 +363,7 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
       return rc;
     }
   }
-  std::vector<Value> values;
-  values.push_back(*(update_stmt->values()));
-  unique_ptr<LogicalOperator> update_oper(new UpdateLogicalOperator(table, values, *(update_stmt->fields())));
-
+  unique_ptr<LogicalOperator> update_oper(new UpdateLogicalOperator(table, update_stmt->values(), update_stmt->fields()));
   if (predicate_oper) {
     predicate_oper->add_child(std::move(table_get_oper));
     update_oper->add_child(std::move(predicate_oper));

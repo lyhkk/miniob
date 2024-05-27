@@ -141,7 +141,7 @@ public:
     ASSERT(!this->speces_.empty(), "Empty rowtuple speces.");
     const FieldMeta* null_field = this->speces_.front()->field().meta();
     ASSERT(nullptr != null_field && CHARS == null_field->type(), "RowTuple gets null field failed.");
-    bitmap_.init(record->data() + null_field->offset(), null_field->len());
+    bitmap_.init(record->data() + null_field->offset(), this->speces_.size());
   }
 
   void set_schema(const Table *table)
