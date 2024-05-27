@@ -158,9 +158,7 @@ RC LogicalPlanGenerator::create_plan(JoinStmt *join_stmt, const std::vector<Fiel
   if (join_stmt->condition() == nullptr) {
     logical_operator.reset(join_oper);
   } else {
-    unique_ptr<LogicalOperator> predicate_oper;
-    rc = create_plan(join_stmt->condition(), predicate_oper);
-    logical_operator.swap(predicate_oper);
+    logical_operator.reset(new PredicateLogicalOperator(std::move(join_stmt->condition())));
     logical_operator->add_child(unique_ptr<LogicalOperator>(join_oper));
   }
   return rc;

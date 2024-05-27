@@ -327,6 +327,7 @@ public:
   };
 
 public:
+  ConjunctionExpr();
   ConjunctionExpr(Type type, std::vector<std::unique_ptr<Expression>> &children);
   ConjunctionExpr(Type type, Expression* left, Expression* right)
     : conjunction_type_(type)
@@ -341,6 +342,7 @@ public:
   RC       get_value(const Tuple &tuple, Value &value) const override;
 
   Type conjunction_type() const { return conjunction_type_; }
+  // Type conjunction_type() { return conjunction_type_; }
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
 
