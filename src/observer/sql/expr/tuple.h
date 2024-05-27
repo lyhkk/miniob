@@ -529,8 +529,6 @@ public:
       }
       // 3. get current value and set result_
       expr_->param()->get_value(tuple, result_);
-      count_ = 1;
-      all_null_ = false;
       // 4. ignore null
       if (!result_.is_null()) {
         count_ = 1;
@@ -595,10 +593,10 @@ public:
         return;
       }
       // 2. all null
-      // if (all_null_) {
-      //   result_.set_null();
-      //   return;
-      // }
+      if (all_null_ && expr_->aggr_type() != AggregateType::COUNT) {
+        result_.set_null();
+        return;
+      }
       // 3. other situation
       switch (expr_->aggr_type()) {
         case AggregateType::COUNT: {

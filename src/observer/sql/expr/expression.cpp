@@ -25,7 +25,6 @@ RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
   if(is_first_)
   {
-    // GroupTuple *group_tuple = static_cast<GroupTuple*>(const_cast<Tuple*>(&tuple));
     bool & is_first_ref = const_cast<bool&>(is_first_);
     is_first_ref = false;
     return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value, const_cast<int&>(index_));
@@ -310,6 +309,11 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
   RC rc = RC::SUCCESS;
 
   const AttrType target_type = value_type();
+  if(target_type == AttrType::NULLS || left_value.is_null() || right_value.is_null())
+  {
+    value.set_null();
+    return rc;
+  }
 
   switch (arithmetic_type_) {
     case Type::ADD: {
@@ -339,17 +343,13 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
     case Type::DIV: {
       if (target_type == AttrType::INTS) {
         if (right_value.get_int() == 0) {
-          // NOTE:
-          // 设置为整数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为整数最大值。
-          value.set_int(numeric_limits<int>::max());
+          value.set_null();
         } else {
           value.set_int(left_value.get_int() / right_value.get_int());
         }
       } else {
         if (right_value.get_float() > -EPSILON && right_value.get_float() < EPSILON) {
-          // NOTE:
-          // 设置为浮点数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为浮点数最大值。
-          value.set_float(numeric_limits<float>::max());
+          value.set_null();
         } else {
           value.set_float(left_value.get_float() / right_value.get_float());
         }
