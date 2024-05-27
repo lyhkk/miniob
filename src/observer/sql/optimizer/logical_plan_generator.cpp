@@ -233,7 +233,7 @@ RC LogicalPlanGenerator::create_plan(
 
   unique_ptr<LogicalOperator> having_filter_oper;
   if (select_stmt->having_filter_stmt() != nullptr) {
-    rc = create_plan(select_stmt->having_filter_stmt(), groupby_oper);
+    rc = create_plan(select_stmt->having_filter_stmt(), having_filter_oper);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
       return rc;
