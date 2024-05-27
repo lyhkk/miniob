@@ -532,10 +532,10 @@ public:
       count_ = 1;
       all_null_ = false;
       // 4. ignore null
-      // if (!result_.is_null()) {
-      //   count_ = 1;
-      //   all_null_ = false;
-      // }
+      if (!result_.is_null()) {
+        count_ = 1;
+        all_null_ = false;
+      }
       return;
     }
     // 每个 group 进行中间结果的计算
@@ -550,17 +550,17 @@ public:
       Value temp;
       expr_->param()->get_value(tuple, temp);
       // 3. ignore null
-      // if (temp.is_null()) { // 直接跳过
-      //   return;
-      // }
+      if (temp.is_null()) { // 直接跳过
+        return;
+      }
       // 4. update status
       count_++;
       all_null_ = false;
       // 5. init 的时候拿到的是 null
-      // if (result_.is_null()) {
-      //   result_ = temp;
-      //   return;
-      // }
+      if (result_.is_null()) {
+        result_ = temp;
+        return;
+      }
       // 6. do aggr calc
       switch (expr_->aggr_type()) {
         case AggregateType::COUNT: 

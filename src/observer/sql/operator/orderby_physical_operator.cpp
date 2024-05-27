@@ -82,18 +82,29 @@ RC OrderByPhysicalOperator::order_main() {
   }
 
   std::sort(pair_sort_table.begin(), pair_sort_table.end(), [&is_asc](const IdxValPair &a, const IdxValPair &b) {
-    // lambda: return true if a should go before b
+    // lambda: return true if a should go before b, return true = swap a and b
     auto &cells_a = a.first;
     auto &cells_b = b.first;
     assert(cells_a.size() == cells_b.size());
     for (size_t i = 0; i < cells_a.size(); ++i) {
-      // TODO: 增加null值的处理
-      if (cells_a[i].compare(cells_b[i]) < 0) {
+      // if one of the cells is null, the null cell is the smallest
+      if (cells_a[i].is_null() && cells_b[i].is_null()) {
+        continue;
+      }
+      else if (cells_a[i].is_null()) {
+        return is_asc[i] ? true : false;
+      }
+      else if (cells_b[i].is_null()) {
+        return is_asc[i] ? false : true;
+      }
+      else if (cells_a[i].compare(cells_b[i]) < 0) {
         return is_asc[i];
-      } else if (cells_a[i].compare(cells_b[i]) > 0) {
+      } 
+      else if (cells_a[i].compare(cells_b[i]) > 0) {
         return !is_asc[i];
       }
     }
+    // 如果所有的cell都相等，那么就不需要交换
     return false;
   });
 

@@ -184,6 +184,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <orderby_unit_list>   sort_list
 %type <orderby_unit_list>   order_by_list
 %type <expression>          having_expr
+%type <expression>          sub_query_expr
 %type <expression_list>     expression_list
 %type <sql_node>            calc_stmt
 %type <sql_node>            select_stmt
@@ -791,7 +792,17 @@ expression:
     | func_expr{
       $$ = $1;
     }
+    // | sub_query_expr {
+    //   $$ = $1;
+    // }
     ;
+
+// sub_query_expr:
+//     LBRACE select_stmt RBRACE {
+//       $$ = new SubqueryExpr($2->selection);
+//       delete $2;
+//     }
+//     ;
 
 aggr_func_expr:
     aggregate_type LBRACE expression RBRACE {

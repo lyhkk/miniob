@@ -45,7 +45,8 @@ enum class ExprType
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
   AGGRFUNCTION, ///< 聚合函数
-  FUNCTION
+  FUNCTION,     ///< 函数
+  SUBQUERY     ///< 子查询
 };
 
 /**
@@ -463,6 +464,54 @@ private:
   std::unique_ptr<Expression> left_;
   std::unique_ptr<Expression> right_;
 };
+
+/*
+ * @brief 简单子查询
+ * @ingroup Expression
+*/
+class SubqueryExpr : public Expression
+{
+public:
+  SubqueryExpr() = default;
+  SubqueryExpr(std::unique_ptr<SelectSqlNode> &sub_selection);
+  virtual ~SubqueryExpr() = default;
+
+  ExprType type() const override { return ExprType::SUBQUERY; }
+  AttrType value_type() const override;
+
+  RC get_value(const Tuple &tuple, Value &value) const override;
+  RC try_get_value(Value &value) const override;
+
+  std::unique_ptr<Expression> &subquery() { return subquery_; }
+
+  std::unique_ptr<Expression> unique_ptr_copy() const override
+  {
+    return nullptr;
+  }
+
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      subquery_->traverse(func, filter);
+      func(this);
+    }
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = subquery_->traverse_check(check_func))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+
+private:
+  std::unique_ptr<Expression> subquery_;
+};
+
 
 /*
  * @brief 聚合函数
