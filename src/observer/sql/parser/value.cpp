@@ -255,7 +255,17 @@ int Value::like_type_compare(const Value &other) const
  */
 int Value::compare(const Value &other) const
 {
-  ASSERT(!this->is_null() && !other.is_null(), "Comparable values couldn't be null.");
+  if(this->is_null() || other.is_null())
+  {
+    if(this->is_null() && other.is_null() )
+    {
+      return 0;
+    }
+    else
+    {
+      return -1;
+    }
+  }
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
       case INTS: {
