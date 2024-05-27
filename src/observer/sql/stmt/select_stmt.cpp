@@ -105,24 +105,19 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   }
 
   // TODO： join_stmt的condition合并->为ConjunctionExpr
-  // JoinStmt                 *join_stmt_tmp = join_stmt.get();
-  // JoinStmt                 *sub_join_tmp  = nullptr;
-  // FilterStmt               *condition_tmp = new FilterStmt();
-  // std::vector<FilterUnit *> filter_units_tmp;
-  // while (join_stmt_tmp != nullptr) {
-  //   sub_join_tmp = join_stmt_tmp->sub_join().get();
-  //   if (sub_join_tmp == nullptr)  break;
-  //   if (join_stmt_tmp->condition() != nullptr && sub_join_tmp->condition() != nullptr) {
-  //     condition_tmp->condition() = new ConjunctionExpr(ConjunctionExpr::Type::AND, expr, expr2);
-  //     join_stmt_tmp->condition() = nullptr;
-  //   }
-  //   join_stmt_tmp = sub_join_tmp;
-    // join_stmt_tmp = join_stmt_tmp->sub_join().get();
-  // }
-  // if (!filter_units_tmp.empty()) {
-  //   condition_tmp->filter_units().swap(filter_units_tmp);
-  //   join_stmt.get()->condition() = condition_tmp;
-  // }
+  JoinStmt                 *join_stmt_tmp = join_stmt.get();
+  std::vector<std::unique_ptr<Expression>> condition;
+
+  while (join_stmt_tmp != nullptr) {
+    if (join_stmt_tmp->condition() != nullptr) {
+      condition.emplace_back(join_stmt_tmp->condition().release());
+      // join_stmt_tmp->condition() = nullptr;
+    }
+    join_stmt_tmp = join_stmt_tmp->sub_join().get();
+  }
+  ConjunctionExpr *conditionExpr = new ConjunctionExpr(ConjunctionExpr::Type::AND, condition);
+  join_stmt.get()->set_condition(std::unique_ptr<Expression>(conditionExpr));
+
 
   bool has_aggregate_func = false;
   bool is_single_table = (tables.size() == 1);

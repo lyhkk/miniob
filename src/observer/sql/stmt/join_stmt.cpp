@@ -49,24 +49,32 @@ RC JoinStmt::create(Db *db, JoinTableSqlNode *&sql_node, JoinStmt *&stmt, std::v
   }
   stmt->sub_join_.reset(sub_join);
 
+  auto check_condition = [&db, &table_map, &table](Expression *expr) -> RC {
+    if (expr->type() == ExprType::COMPARISON) {
+      ComparisonExpr* cmp_expr = static_cast<ComparisonExpr*>(expr);
+      CompOp comp = cmp_expr->comp();
+      if (comp < EQUAL_TO || comp >= NO_OP) {
+        LOG_WARN("invalid compare operator : %d", comp);
+        return RC::INVALID_ARGUMENT;
+      }
+    }
+    else if (expr->type() == ExprType::FIELD) {
+      FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
+      return field_expr->check_field(table_map, {}, table, {});
+    }
+    else if (expr->type() == ExprType::FUNCTION) {
+      FuncExpr* func_expr = static_cast<FuncExpr*>(expr);
+      return func_expr->check_function_param_type();
+    }
+    return RC::SUCCESS;
+  };
+
   if (sql_node->sub_join != nullptr && sql_node->sub_join->join_condition != nullptr) {
-    FilterStmt               *tmp_stmt = new FilterStmt();
-    // std::vector<FilterUnit *> tmp_filter_units;
+    if (sql_node->sub_join->join_condition->traverse_check(check_condition) != RC::SUCCESS) {
+      return RC::INVALID_ARGUMENT;
+    }
 
-    // for (int i = 0; i < static_cast<int>(sql_node->sub_join->join_condition.size()); i++) {
-    //   FilterUnit *filter_unit = nullptr;
-
-    //   rc = FilterStmt::create_filter_unit(db, table, &table_map, sql_node->sub_join->join_condition[i], filter_unit);
-    //   if (rc != RC::SUCCESS) {
-    //     delete tmp_stmt;
-    //     LOG_WARN("failed to create filter unit. condition index=%d", i);
-    //     return rc;
-    //   }
-    //   tmp_filter_units.push_back(filter_unit);
-    // }
-    FilterStmt::create(db, table, &table_map, sql_node->sub_join->join_condition, tmp_stmt);
-    // tmp_stmt->filter_units().swap(tmp_filter_units);
-    stmt->condition_ = tmp_stmt;
+    stmt->condition_ = std::unique_ptr<Expression>(sql_node->sub_join->join_condition);
   }
 
   return rc;
