@@ -297,10 +297,10 @@ int Value::compare(const Value &other) const
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == CHARS) {
-    float other_data = stof(other.str_value_);
+    float other_data = other.get_float();
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   } else if (this->attr_type_ == CHARS && other.attr_type_ == FLOATS) {
-    float this_data = stof(this->str_value_);
+    float this_data = this->get_float();
     return common::compare_float((void *)&this_data, (void *)&other.num_value_.float_value_);
   }
   LOG_WARN("not supported");
