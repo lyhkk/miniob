@@ -171,9 +171,6 @@ RC LogicalPlanGenerator::create_plan(
   unique_ptr<LogicalOperator> table_oper(nullptr);
   std::vector<unique_ptr<Expression>> &projects = select_stmt->projects();
 
-  // const std::vector<Table *> &tables     = select_stmt->tables();
-  // const std::vector<Field> &all_fields = select_stmt->query_fields();
-
   // 目前不需要all_fields在TableGetLogicalOperator
   std::vector<Field> all_fields;
   RC rc = RC::SUCCESS;
@@ -276,6 +273,18 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
   if (filter_stmt == nullptr || filter_stmt->condition() == nullptr) {
     return RC::SUCCESS;
   }
+
+  auto process_sub_query = [](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_subquery_logical_oper();
+    }
+    return RC::SUCCESS;
+  };
+  if (RC rc = filter_stmt->condition()->traverse_check(process_sub_query); OB_FAIL(rc)) {
+    return rc;
+  }
+  
   cmp_exprs.emplace_back(std::move(filter_stmt->condition()));
   unique_ptr<PredicateLogicalOperator> predicate_oper;
   if (!cmp_exprs.empty()) {

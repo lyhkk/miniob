@@ -107,7 +107,20 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
 
   Index     *index      = nullptr;
   ValueExpr *value_expr = nullptr;
+
+  // for subquery
+  auto process_sub_query = [](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_subquery_physical_oper();
+    }
+    return RC::SUCCESS;
+  };
   for (auto &expr : predicates) {
+    RC rc = expr->traverse_check(process_sub_query);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
       // 简单处理，就找等值查询
@@ -183,6 +196,17 @@ RC PhysicalPlanGenerator::create_plan(PredicateLogicalOperator &pred_oper, uniqu
   ASSERT(expressions.size() == 1, "predicate logical operator's children should be 1");
 
   unique_ptr<Expression> expression = std::move(expressions.front());
+
+  rc = expression->traverse_check([](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_subquery_physical_oper();
+    }
+    return RC::SUCCESS;
+  });
+  if (RC::SUCCESS != rc) {
+    return rc;
+  }
   oper = unique_ptr<PhysicalOperator>(new PredicatePhysicalOperator(std::move(expression)));
   oper->add_child(std::move(child_phy_oper));
   return rc;
