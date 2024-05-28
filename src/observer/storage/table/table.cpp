@@ -575,7 +575,7 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
   int field_offset = -1;
   int field_length = -1;
   int field_index  = -1;
-  //bool is_index = false;//标识当前列上是否有索引
+  bool is_index = false;//标识当前列上是否有索引
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
 
@@ -609,6 +609,9 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
       field_offset = field_meta->offset();
       field_length = field_meta->len();
       field_index  = sys_field_num + i;
+      if (nullptr != find_index_by_field(field_name)) {
+        is_index = true;
+      }
       break;
     }
     if(field_length < 0 || field_offset < 0) {
@@ -618,26 +621,23 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
 
     const FieldMeta* null_field = table_meta_.null_field();
 
-    common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
+    //common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
     char *new_value = new char[field_length + 1];
-    if (value->is_null()) {
-      if (old_null_bitmap.get_bit(field_index)) {
-        LOG_WARN("update old value equals new value");
-        return RC::SUCCESS;
-      }
+    //if (value->is_null()) {
+     // if (old_null_bitmap.get_bit(field_index)) {
+    //    LOG_WARN("update old value equals new value");
+      //  return RC::SUCCESS;
+     // }
+    if(value->length() == field_length) {
+      memcpy(new_value, value->data(), value->length());
     }
     else {
-      if(value->length() == field_length) {
-        memcpy(new_value, value->data(), value->length());
-      }
-      else {
-        memcpy(new_value, value->data(), value->length());
-        memset(new_value + value->length(), '\0', field_length - value->length());
-      }
-      if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
-        LOG_WARN("update old value equals new value");
-        return RC::SUCCESS;
-      }
+      memcpy(new_value, value->data(), value->length());
+      memset(new_value + value->length(), '\0', field_length - value->length());
+    }
+    if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
+      LOG_WARN("update old value equals new value");
+      return RC::SUCCESS;
     }
     //写入新的值
     common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());
@@ -651,35 +651,39 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     delete []new_value;
   }
   record.set_data(data);
-  rc = delete_entry_of_indexes(old_data, record.rid(), false);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-        record.rid().page_num,
-        record.rid().slot_num,
-        rc,
-        strrc(rc));
-    return rc;
+  if (is_index) {
+    rc = delete_entry_of_indexes(old_data, record.rid(), false);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+          record.rid().page_num,
+          record.rid().slot_num,
+          rc,
+          strrc(rc));
+      return rc;
+    }
   }
 
-  rc = insert_entry_of_indexes(record.data(), record.rid());
-  if (rc != RC::SUCCESS) {  // 插入失败，换回旧索引
-    RC rc2 = insert_entry_of_indexes(old_data, record.rid());
-    if (rc2 != RC::SUCCESS) {
-      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-          name(),
-          rc2,
-          strrc(rc2));
-    }
-    return rc;
-  }
-  
-  record_handler_->update_record(&record);
+  rc = record_handler_->update_record(&record);
   if (rc != RC::SUCCESS) {
     LOG_ERROR(
         "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
     return rc;
   }
+
+  if(is_index) {
+    rc = insert_entry_of_indexes(record.data(), record.rid());
+    if (rc != RC::SUCCESS) {  // 插入失败，换回旧索引
+      RC rc2 = insert_entry_of_indexes(old_data, record.rid());
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+      return rc;
+    }
+  }
+  
   delete []data;
-  record.set_data(old_data);
   return rc;
 }

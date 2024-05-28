@@ -65,7 +65,8 @@ RC UpdatePhysicalOperator::next()
         }
         if (RC::SUCCESS != (rc2 = table_->get_record(old_records_[i], updated_record))) {
           LOG_ERROR("Failed to get record when try to rollback, rc=%s", strrc(rc2));
-        } else if (RC::SUCCESS != (rc2 = table_->update_record(updated_record, fields_, old_row_values))) {
+        }
+        else if (RC::SUCCESS != (rc2 = table_->update_record(updated_record, fields_, old_row_values))) {
           LOG_ERROR("Failed to rollback after update failed, rc=%s", strrc(rc2));
         }
       }
