@@ -20,10 +20,17 @@ See the Mulan PSL v2 for more details. */
 #include <string>
 #include <vector>
 
+#include "sql/parser/parse_defs.h"
 #include "sql/parser/value.h"
 #include "storage/field/field.h"
+#include "storage/table/table.h"
+#include "storage/db/db.h"
 
 class Tuple;
+class Stmt;
+class SelectStmt;
+class LogicalOperator;
+class PhysicalOperator;
 
 /**
  * @defgroup Expression
@@ -46,6 +53,7 @@ enum class ExprType
   ARITHMETIC,   ///< 算术运算
   AGGRFUNCTION, ///< 聚合函数
   FUNCTION,     ///< 函数
+  EXPRLIST,     ///< 表达式列表
   SUBQUERY     ///< 子查询
 };
 
@@ -469,47 +477,57 @@ private:
  * @brief 简单子查询
  * @ingroup Expression
 */
-class SubqueryExpr : public Expression
+class SubQueryExpr : public Expression
 {
 public:
-  SubqueryExpr() = default;
-  SubqueryExpr(std::unique_ptr<SelectSqlNode> &sub_selection);
-  virtual ~SubqueryExpr() = default;
+  SubQueryExpr() = default;
+  SubQueryExpr(SelectSqlNode &sub_selection);
+  virtual ~SubQueryExpr() = default;
+
+  RC generate_subquery_stmt(Db* db);
+  RC generate_subquery_logical_oper();
+  RC generate_subquery_physical_oper();
+  bool has_more_row(const Tuple &tuple) const;
+  RC open(Trx *trx);
+  RC close();
 
   ExprType type() const override { return ExprType::SUBQUERY; }
-  AttrType value_type() const override;
+  AttrType value_type() const override {
+    return AttrType::UNDEFINED;
+  }
 
   RC get_value(const Tuple &tuple, Value &value) const override;
-  RC try_get_value(Value &value) const override;
+  RC try_get_value(Value &value) const override {
+    return RC::UNIMPLENMENT;
+  }
 
-  std::unique_ptr<Expression> &subquery() { return subquery_; }
+  std::unique_ptr<SelectSqlNode> &subquery() { return subquery_; }
 
   std::unique_ptr<Expression> unique_ptr_copy() const override
   {
+    // NOT IMPLEMENTED
+    // 因为目前不在stmt阶段处理子查询，所以这里不需要实现
     return nullptr;
   }
 
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
-    if (filter(this)) {
-      subquery_->traverse(func, filter);
-      func(this);
-    }
   }
 
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = subquery_->traverse_check(check_func))) {
-      return rc;
-    } else if (RC::SUCCESS != (rc = check_func(this))) {
+    RC rc;
+    if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return RC::SUCCESS;
   }
 
 private:
-  std::unique_ptr<Expression> subquery_;
+  std::unique_ptr<SelectSqlNode> subquery_;
+  std::unique_ptr<SelectStmt> stmt_;
+  std::unique_ptr<LogicalOperator> logical_oper_;
+  std::unique_ptr<PhysicalOperator> physical_oper_;
 };
 
 
@@ -637,4 +655,76 @@ public:
 private:
   FunctionType                             func_type_;
   std::vector<std::unique_ptr<Expression>> params_;
+};
+
+class ExprListExpr : public Expression
+{
+public:
+  ExprListExpr(std::vector<Expression*>&& exprs) {
+    for (auto expr : exprs) {
+      exprs_.emplace_back(expr);
+    }
+    exprs.clear();
+  }
+  ExprListExpr(std::vector<std::unique_ptr<Expression>>&& exprs) : exprs_(std::move(exprs)) {}
+  virtual ~ExprListExpr() = default;
+
+  void reset()
+  {
+    cur_idx_ = 0;
+  }
+
+  RC get_value(const Tuple &tuple, Value &value) const override
+  {
+    if ((long unsigned int)cur_idx_ >= exprs_.size()) {
+      return RC::RECORD_EOF;
+    }
+    RC rc = exprs_[const_cast<int&>(cur_idx_)++]->get_value(tuple, value);
+    return rc;
+  }
+
+  RC try_get_value(Value &value) const override { return RC::UNIMPLENMENT; }
+
+  ExprType type() const override { return ExprType::EXPRLIST; }
+
+  AttrType value_type() const override { return UNDEFINED; }
+
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      for (auto& expr : exprs_) {
+        expr->traverse(func, filter);
+      }
+      func(this);
+    }
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    for (auto& expr : exprs_) {
+      if (RC::SUCCESS != (rc = expr->traverse_check(check_func))) {
+        return rc;
+      }
+    }
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> unique_ptr_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& expr : exprs_) {
+      new_children.emplace_back(expr->unique_ptr_copy());
+    }
+    auto new_expr = std::make_unique<ExprListExpr>(std::move(new_children));
+    new_expr->set_name(name());
+    new_expr->set_alias(alias());
+    return new_expr;
+  }
+private:
+  int cur_idx_ = 0;
+  std::vector<std::unique_ptr<Expression>> exprs_;
 };

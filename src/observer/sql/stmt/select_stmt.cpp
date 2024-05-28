@@ -104,7 +104,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     join_stmt.reset(join);
   }
 
-  // TODO： join_stmt的condition合并->为ConjunctionExpr
   JoinStmt                 *join_stmt_tmp = join_stmt.get();
   std::vector<std::unique_ptr<Expression>> condition;
 
@@ -128,7 +127,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   }
 
   auto check_project_expr = [&table_map, &tables, &default_table, &has_aggregate_func](Expression *expr) -> RC {
-    // TODO add check for project expression
     if (expr->type() == ExprType::FIELD) {
       FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
       if (field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
@@ -147,6 +145,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         return RC::SCHEMA_FIELD_MISSING;
       }
       has_aggregate_func = true;
+    }
+    else if (expr->type() == ExprType::SUBQUERY) {
+      return RC::INVALID_ARGUMENT;
     }
     return RC::SUCCESS;
   };
