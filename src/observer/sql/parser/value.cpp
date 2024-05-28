@@ -255,7 +255,17 @@ int Value::like_type_compare(const Value &other) const
  */
 int Value::compare(const Value &other) const
 {
-  ASSERT(!this->is_null() && !other.is_null(), "Comparable values couldn't be null.");
+  if(this->is_null() || other.is_null())
+  {
+    if(this->is_null() && other.is_null() )
+    {
+      return 0;
+    }
+    else
+    {
+      return -1;
+    }
+  }
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
       case INTS: {
@@ -287,10 +297,10 @@ int Value::compare(const Value &other) const
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == CHARS) {
-    float other_data = stof(other.str_value_);
+    float other_data = other.get_float();
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   } else if (this->attr_type_ == CHARS && other.attr_type_ == FLOATS) {
-    float this_data = stof(this->str_value_);
+    float this_data = this->get_float();
     return common::compare_float((void *)&this_data, (void *)&other.num_value_.float_value_);
   }
   LOG_WARN("not supported");

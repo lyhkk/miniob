@@ -46,6 +46,12 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
       FuncExpr* func_expr = static_cast<FuncExpr*>(expr);
       return func_expr->check_function_param_type();
     }
+    if (expr->type() == ExprType::SUBQUERY) {
+      // 条件表达式里才有子查询
+      SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
+      LOG_INFO("subquery_expr->generate_subquery_stmt");
+      return subquery_expr->generate_subquery_stmt(db);
+    }
     return RC::SUCCESS;
   };
 

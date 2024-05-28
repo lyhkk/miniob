@@ -13,19 +13,25 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/lang/defer.h"
 #include "common/log/log.h"
 #include "sql/expr/tuple.h"
 #include "common/lang/string.h"
 #include "sql/parser/value.h"
+#include "sql/stmt/select_stmt.h"
+#include "sql/operator/logical_operator.h"
+#include "sql/operator/physical_operator.h"
+#include "sql/optimizer/logical_plan_generator.h"
+#include "sql/optimizer/physical_plan_generator.h"
 #include <memory>
 #include <cmath>
+#include <string>
 using namespace std;
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
   if(is_first_)
   {
-    // GroupTuple *group_tuple = static_cast<GroupTuple*>(const_cast<Tuple*>(&tuple));
     bool & is_first_ref = const_cast<bool&>(is_first_);
     is_first_ref = false;
     return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value, const_cast<int&>(index_));
@@ -230,15 +236,93 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
   Value left_value;
   Value right_value;
 
+  // open subquery if has one
+  SubQueryExpr *left_subquery = nullptr;
+  SubQueryExpr *right_subquery = nullptr;
+
+  DEFER([&left_subquery]() {
+    if (nullptr != left_subquery) {
+      left_subquery->close();
+    }
+  });
+  DEFER([&right_subquery]() {
+    if (nullptr != right_subquery) {
+      right_subquery->close();
+    }
+  });
+  if (left_->type() == ExprType::SUBQUERY) {
+    assert(left_ != nullptr);
+    left_subquery = static_cast<SubQueryExpr *>(left_.get());
+    left_subquery->open(nullptr);
+  }
+  if (right_->type() == ExprType::SUBQUERY) {
+    assert(right_ != nullptr);
+    right_subquery = static_cast<SubQueryExpr *>(right_.get());
+    right_subquery->open(nullptr);
+  }
+
+  if (comp_ == EXISTS_OP || comp_ == NOT_EXISTS_OP) {
+    assert(right_subquery != nullptr);
+    RC rc = right_->get_value(tuple, right_value);
+    if (comp_ == EXISTS_OP && rc == RC::SUCCESS) {
+      value.set_boolean(true);
+    } 
+    else if (comp_ == NOT_EXISTS_OP && rc == RC::RECORD_EOF) {
+      value.set_boolean(true);
+    } 
+    else {
+      value.set_boolean(false);
+    }
+    return rc == RC::RECORD_EOF ? RC::SUCCESS : rc;
+  }
+
   RC rc = left_->get_value(tuple, left_value);
+  if (left_->type() == ExprType::SUBQUERY && RC::RECORD_EOF == rc) {
+    left_value.set_null();
+    rc = RC::SUCCESS;
+  }
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
   }
+  if (left_subquery && left_subquery->has_more_row(tuple)) {
+    LOG_INFO("left subquery has more row");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  if (comp_ == IN_OP || comp_ == NOT_IN_OP) {
+    if (left_value.is_null()) {
+      value.set_boolean(false);
+      return RC::SUCCESS;
+    }
+    if (right_->type() == ExprType::EXPRLIST) {
+      static_cast<ExprListExpr*>(right_.get())->reset();
+    }
+    bool res = false; // 有一样的值
+    bool has_null = false; // 有一个 null
+    while (RC::SUCCESS == (rc = right_->get_value(tuple, right_value))) {
+      if (right_value.is_null()) {
+        has_null = true;
+      } else if (left_value.compare(right_value) == 0) {
+        res = true;
+      }
+    }
+    value.set_boolean(comp_ == IN_OP ? res : (has_null ? false : !res));
+    return rc == RC::RECORD_EOF ? RC::SUCCESS : rc;
+  }
+
   rc = right_->get_value(tuple, right_value);
+  if (right_->type() == ExprType::SUBQUERY && RC::RECORD_EOF == rc) {
+    right_value.set_null();
+    rc = RC::SUCCESS;
+  }
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
     return rc;
+  }
+  if (right_subquery && right_subquery->has_more_row(tuple)) {
+    LOG_INFO("right subquery has more row");
+    return RC::INVALID_ARGUMENT;
   }
 
   bool bool_value = false;
@@ -310,6 +394,11 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
   RC rc = RC::SUCCESS;
 
   const AttrType target_type = value_type();
+  if(target_type == AttrType::NULLS || left_value.is_null() || right_value.is_null())
+  {
+    value.set_null();
+    return rc;
+  }
 
   switch (arithmetic_type_) {
     case Type::ADD: {
@@ -339,17 +428,13 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
     case Type::DIV: {
       if (target_type == AttrType::INTS) {
         if (right_value.get_int() == 0) {
-          // NOTE:
-          // 设置为整数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为整数最大值。
-          value.set_int(numeric_limits<int>::max());
+          value.set_null();
         } else {
           value.set_int(left_value.get_int() / right_value.get_int());
         }
       } else {
         if (right_value.get_float() > -EPSILON && right_value.get_float() < EPSILON) {
-          // NOTE:
-          // 设置为浮点数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为浮点数最大值。
-          value.set_float(numeric_limits<float>::max());
+          value.set_null();
         } else {
           value.set_float(left_value.get_float() / right_value.get_float());
         }
@@ -704,4 +789,72 @@ RC FuncExpr::get_value(const Tuple &tuple, Value &value) const{
     } break;
   }
   return rc;
+}
+
+SubQueryExpr::SubQueryExpr(SelectSqlNode &subquery) : subquery_(std::make_unique<SelectSqlNode>(subquery))
+{}
+
+RC SubQueryExpr::generate_subquery_stmt(Db* db) {
+  Stmt * tmp_stmt = nullptr;
+  if (SelectStmt::create(db, *subquery_.get(), tmp_stmt) != RC::SUCCESS) {
+    return RC::INTERNAL;
+  }
+
+  if (tmp_stmt->type() != StmtType::SELECT) {
+    return RC::INVALID_ARGUMENT;
+  }
+
+  // 只支持单列子查询
+  SelectStmt* select_stmt = static_cast<SelectStmt*>(tmp_stmt);
+  if (select_stmt->projects().size() > 1) {
+    return RC::INVALID_ARGUMENT;
+  }
+
+  stmt_ = std::unique_ptr<SelectStmt>(select_stmt);
+  LOG_INFO("subquery stmt generate success.");
+  return RC::SUCCESS;
+}
+
+RC SubQueryExpr::generate_subquery_logical_oper() {
+  LogicalPlanGenerator logical_plan_generator;
+  if (logical_plan_generator.create(stmt_.get(), logical_oper_) != RC::SUCCESS) {
+    LOG_WARN("subquery logical oper generate failed.");
+    return RC::INTERNAL;
+  }
+  LOG_INFO("subquery logical oper generate success.");
+  return RC::SUCCESS;
+}
+
+RC SubQueryExpr::generate_subquery_physical_oper() {
+  PhysicalPlanGenerator physical_plan_generator;
+  if (physical_plan_generator.create(*logical_oper_, physical_oper_) != RC::SUCCESS) {
+    LOG_WARN("subquery physical oper generate failed.");
+    return RC::INTERNAL;
+  }
+  return RC::SUCCESS;
+}
+
+RC SubQueryExpr::open(Trx* trx)
+{
+  assert(physical_oper_ != nullptr);
+  return physical_oper_->open(trx);
+}
+
+RC SubQueryExpr::close()
+{
+  return physical_oper_->close();
+}
+
+RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
+{
+  RC rc = physical_oper_->next();
+  if (RC::SUCCESS != rc) {
+    return rc;
+  }
+  return physical_oper_->current_tuple()->cell_at(0, value);
+}
+
+bool SubQueryExpr::has_more_row(const Tuple &tuple) const
+{
+  return physical_oper_->next() != RC::RECORD_EOF;
 }

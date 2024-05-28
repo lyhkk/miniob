@@ -578,7 +578,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
   bool is_index = false;//标识当前列上是否有索引
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
-
   int record_size = table_meta_.record_size();
   char *old_data = record.data();
   char *data = new char[record_size];

@@ -857,7 +857,7 @@ static const yytype_uint8 yytable[] =
      235,   204,   181,   237,   212,     0,     0,     0,   223
 };
 
-static const yytype_int16 yycheck[] =
+static const yytype_uint8 yycheck[] =
 {
       54,     4,   103,    41,   120,    38,    60,    41,    15,    16,
       17,    18,    75,   139,    28,    29,    79,    79,    80,   101,
@@ -1833,7 +1833,7 @@ yyreduce:
          {
       (yyval.sql_node) = new ParsedSqlNode(SCF_HELP);
     }
-#line 1837 "yacc_sql.cpp"
+#line 1866 "yacc_sql.cpp"
     break;
 
   case 25: /* sync_stmt: SYNC  */
@@ -2616,6 +2616,7 @@ yyreduce:
                                {
       (yyval.expression) = (yyvsp[-1].expression);
       (yyval.expression)->set_name(token_name(sql_string, &(yyloc)));
+      delete (yyvsp[-1].expression_list);
     }
 #line 2621 "yacc_sql.cpp"
     break;

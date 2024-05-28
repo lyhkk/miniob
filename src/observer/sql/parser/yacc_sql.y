@@ -186,6 +186,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <orderby_unit_list>   sort_list
 %type <orderby_unit_list>   order_by_list
 %type <expression>          having_expr
+%type <expression>          sub_query_expr
 %type <expression_list>     expression_list
 %type <update_kv>           update_kv
 %type <update_kv_list>      update_kv_list
@@ -806,9 +807,15 @@ expression:
     | expression '/' expression {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::DIV, $1, $3, sql_string, &@$);
     }
-    | LBRACE expression RBRACE {
-      $$ = $2;
+    | LBRACE expression_list RBRACE {
+      if ($2->size() == 1) {
+        $$ = $2->front();
+      } else {
+        std::reverse($2->begin(), $2->end());
+        $$ = new ExprListExpr(std::move(*$2));
+      }
       $$->set_name(token_name(sql_string, &@$));
+      delete $2;
     }
     | '-' expression %prec UMINUS {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
@@ -828,6 +835,16 @@ expression:
     }
     | func_expr{
       $$ = $1;
+    }
+    | sub_query_expr {
+      $$ = $1;
+    }
+    ;
+
+sub_query_expr:
+    LBRACE select_stmt RBRACE {
+      $$ = new SubQueryExpr($2->selection);
+      delete $2;
     }
     ;
 
@@ -955,6 +972,13 @@ condition:
       val.set_null();
       ValueExpr *value_expr = new ValueExpr(val);
       $$ = new ComparisonExpr($2 ? IS_NULL : IS_NOT_NULL, $1, value_expr);
+    }
+    | exists_op expression
+    {
+      Value val;
+      val.set_null();
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($1, value_expr, $2);
     }
     | condition AND condition {
       $$ = new ConjunctionExpr(ConjunctionExpr::Type::AND, $1, $3);
