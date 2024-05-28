@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "common/rc.h"
+#include "sql/parser/value.h"
 #include "sql/stmt/filter_stmt.h"
 #include "sql/stmt/stmt.h"
 #include "storage/field/field.h"
@@ -32,7 +33,7 @@ class UpdateStmt : public Stmt
 {
 public:
   UpdateStmt() = default;
-  UpdateStmt(Table *table, const Value *values, int value_amount,FieldMeta field,FilterStmt *filter_stmt);
+  UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<Value*> values, FilterStmt *filter_stmt);
   ~UpdateStmt() override;
   StmtType type() const override { return StmtType::UPDATE; }
 public:
@@ -40,15 +41,14 @@ public:
 
 public:
   Table *table() const { return table_; }
-  const Value *values() const { return values_; }
-  int value_amount() const {return value_amount_; }
-  std::vector<FieldMeta> *fields() {return &fields_; }
+  std::vector<Value *> &values() { return values_; }
+  int value_amount() const { return fields_.size(); }
+  std::vector<FieldMeta> &fields() {return fields_; }
   FilterStmt *filter_stmt() {return filter_stmt_; }
 
 private:
   Table *table_ = nullptr;
-  std::vector<FieldMeta> fields_; //需要更新的列
-  const Value *values_ = nullptr; //更新的值
-  int value_amount_ = 0;
+  std::vector<FieldMeta> fields_; //更新的列
+  std::vector<Value*> values_;    //列的新值
   FilterStmt *filter_stmt_ = nullptr; //条件
 };

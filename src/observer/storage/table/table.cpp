@@ -323,7 +323,7 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
 
   // 处理null field
   const FieldMeta* null_field = table_meta_.null_field();
-  common::Bitmap null_bitmap(record_data + null_field->offset(), null_field->len());
+  common::Bitmap null_bitmap(record_data + null_field->offset(), table_meta_.field_num());
   null_bitmap.clear_bits();
 
   for (int i = 0; i < value_num; i++) {
@@ -554,59 +554,79 @@ RC Table::sync()
   return rc;
 }
 
-//更新单个字段
 RC Table::update_record(Record &record, const char *attr_name, Value *value)
 {
+  std::vector<Value*> values;
+  values.emplace_back(value);
+  std::vector<std::string> attr_names;
+  attr_names.emplace_back(attr_name);
+  return update_record(record, attr_names, values);
+}
+
+//更新单个字段
+RC Table::update_record(Record &record, std::vector<std::string> attr_names, std::vector<Value*> values)
+{
   RC rc = RC::SUCCESS;
-  
+  if (attr_names.size() != values.size() || attr_names.size() == 0) {
+    rc = RC::INVALID_ARGUMENT;
+    LOG_WARN("invalid update argument. attribute amount and value amount do not match");
+    return rc;
+  }
   int field_offset = -1;
   int field_length = -1;
   int field_index  = -1;
   bool is_index = false;//标识当前列上是否有索引
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
-  for(int i = 0 ; i < user_field_num ; ++i) {
-    const FieldMeta *field_meta = table_meta_.field( i + sys_field_num);
-    const char * field_name = field_meta -> name();
-    if( 0 != strcmp(field_name,attr_name)) {
-      continue;
-    }
-    AttrType attr_type= field_meta->type();
-    AttrType value_type = value->attr_type();
-    if(field_meta->nullable() && value->is_null()) {
-      //empty
-    }
-    else if(attr_type != value_type) {
-      LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-          name(),
-          field_meta->name(),
-          attr_type,
-          value_type);
-      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-    }
-    field_offset = field_meta->offset();
-    field_length = field_meta->len();
-    field_index  = sys_field_num + i;
-    if (nullptr != find_index_by_field(field_name)) {
-      is_index = true;
-    }
-    break;
-  }
-  if(field_length < 0 || field_offset < 0) {
-    LOG_WARN("field not find ,field name = %s",attr_name);
-      return RC::SCHEMA_FIELD_NOT_EXIST;
-  }
+  int record_size = table_meta_.record_size();
+  char *old_data = record.data();
+  char *data = new char[record_size];
+  memcpy(data, old_data, record_size);
 
-  const FieldMeta* null_field = table_meta_.null_field();
-  common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
-  char *new_value = new char[field_length + 1];
-  if (value->is_null()) {
-    if (old_null_bitmap.get_bit(field_index)) {
-      LOG_WARN("update old value equals new value");
-      return RC::SUCCESS;
+  for(size_t idx_cnt = 0; idx_cnt < attr_names.size(); idx_cnt++) {
+    Value *value = values[idx_cnt];
+    std::string &attr_name = attr_names[idx_cnt];
+    for(int i = 0 ; i < user_field_num ; ++i) {
+      const FieldMeta *field_meta = table_meta_.field( i + sys_field_num);
+      const char * field_name = field_meta -> name();
+      if( 0 != strcmp(field_name, attr_name.c_str())) {
+        continue;
+      }
+      AttrType attr_type= field_meta->type();
+      AttrType value_type = value->attr_type();
+      if(field_meta->nullable() && value->is_null()) {
+        //empty
+      }
+      else if(attr_type != value_type) {
+        LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+            name(),
+            field_meta->name(),
+            attr_type,
+            value_type);
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }
+      field_offset = field_meta->offset();
+      field_length = field_meta->len();
+      field_index  = sys_field_num + i;
+      if (nullptr != find_index_by_field(field_name)) {
+        is_index = true;
+      }
+      break;
     }
-  }
-  else {
+    if(field_length < 0 || field_offset < 0) {
+      LOG_WARN("field not find ,field name = %s", attr_name.c_str());
+      return RC::SCHEMA_FIELD_NOT_EXIST;
+    }
+
+    const FieldMeta* null_field = table_meta_.null_field();
+
+    //common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
+    char *new_value = new char[field_length + 1];
+    //if (value->is_null()) {
+     // if (old_null_bitmap.get_bit(field_index)) {
+    //    LOG_WARN("update old value equals new value");
+      //  return RC::SUCCESS;
+     // }
     if(value->length() == field_length) {
       memcpy(new_value, value->data(), value->length());
     }
@@ -618,40 +638,18 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
       LOG_WARN("update old value equals new value");
       return RC::SUCCESS;
     }
-  }
-  
-  //写入新的值
-  int record_size = table_meta_.record_size();
-  char *old_data = record.data();
-  char *data = new char[record_size];
-  memcpy(data, old_data, record_size);
-  common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());
-  if (value->is_null()) {
-    new_null_bitmap.set_bit(field_index);
-  }
-  else {
-    new_null_bitmap.clear_bit(field_index);
-    memcpy(data + field_offset, new_value, field_length);
+    //写入新的值
+    common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());
+    if (value->is_null()) {
+      new_null_bitmap.set_bit(field_index);
+    }
+    else {
+      new_null_bitmap.clear_bit(field_index);
+      memcpy(data + field_offset, new_value, field_length);
+    }
+    delete []new_value;
   }
   record.set_data(data);
-  if(is_index)
-  {
-    rc = insert_entry_of_indexes(record.data(), record.rid());
-    if (rc != RC::SUCCESS) { // 可能出现了键值重复
-      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false);
-      if (rc2 != RC::SUCCESS) {
-        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-                  name(), rc2, strrc(rc2));
-      }
-      return rc;//插入新的索引失败
-    }
-  }
-  record_handler_->update_record(&record);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR(
-        "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
-    return rc;
-  }
   if (is_index) {
     rc = delete_entry_of_indexes(old_data, record.rid(), false);
     if (rc != RC::SUCCESS) {
@@ -660,11 +658,31 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
           record.rid().slot_num,
           rc,
           strrc(rc));
+      return rc;
     }
+  }
+
+  rc = record_handler_->update_record(&record);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR(
+        "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
     return rc;
   }
 
-  delete []new_value;
+  if(is_index) {
+    rc = insert_entry_of_indexes(record.data(), record.rid());
+    if (rc != RC::SUCCESS) {  // 插入失败，换回旧索引
+      RC rc2 = insert_entry_of_indexes(old_data, record.rid());
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+      return rc;
+    }
+  }
+  
   delete []data;
   return rc;
 }
