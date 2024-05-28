@@ -39,6 +39,10 @@ SelectStmt::~SelectStmt()
     delete having_filter_stmt_;
     having_filter_stmt_ = nullptr;
   }
+  if (nullptr != orderby_stmt_) {
+    delete orderby_stmt_;
+    orderby_stmt_ = nullptr;
+  }
 }
 
 static void wildcard_fields(Table *table, std::vector<std::unique_ptr<Expression>> &projects_exprs_, bool is_single_table)
@@ -100,25 +104,20 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     join_stmt.reset(join);
   }
 
-  // TODO： join_stmt的condition合并->为ConjunctionExpr
-  // JoinStmt                 *join_stmt_tmp = join_stmt.get();
-  // JoinStmt                 *sub_join_tmp  = nullptr;
-  // FilterStmt               *condition_tmp = new FilterStmt();
-  // std::vector<FilterUnit *> filter_units_tmp;
-  // while (join_stmt_tmp != nullptr) {
-  //   sub_join_tmp = join_stmt_tmp->sub_join().get();
-  //   if (sub_join_tmp == nullptr)  break;
-  //   if (join_stmt_tmp->condition() != nullptr && sub_join_tmp->condition() != nullptr) {
-  //     condition_tmp->condition() = new ConjunctionExpr(ConjunctionExpr::Type::AND, expr, expr2);
-  //     join_stmt_tmp->condition() = nullptr;
-  //   }
-  //   join_stmt_tmp = sub_join_tmp;
-    // join_stmt_tmp = join_stmt_tmp->sub_join().get();
-  // }
-  // if (!filter_units_tmp.empty()) {
-  //   condition_tmp->filter_units().swap(filter_units_tmp);
-  //   join_stmt.get()->condition() = condition_tmp;
-  // }
+  JoinStmt                 *join_stmt_tmp = join_stmt.get();
+  std::vector<std::unique_ptr<Expression>> condition;
+
+  while (join_stmt_tmp != nullptr) {
+    if (join_stmt_tmp->condition() != nullptr) {
+      condition.emplace_back(join_stmt_tmp->condition().release());
+      // join_stmt_tmp->condition() = nullptr;
+    }
+    join_stmt_tmp = join_stmt_tmp->sub_join().get();
+  }
+  if (!condition.empty()) {
+    ConjunctionExpr *conditionExpr = new ConjunctionExpr(ConjunctionExpr::Type::AND, condition);
+    join_stmt.get()->set_condition(std::unique_ptr<Expression>(conditionExpr));
+  }
 
   bool has_aggregate_func = false;
   bool is_single_table = (tables.size() == 1);
@@ -128,7 +127,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   }
 
   auto check_project_expr = [&table_map, &tables, &default_table, &has_aggregate_func](Expression *expr) -> RC {
-    // TODO add check for project expression
     if (expr->type() == ExprType::FIELD) {
       FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
       if (field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
@@ -147,6 +145,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         return RC::SCHEMA_FIELD_MISSING;
       }
       has_aggregate_func = true;
+    }
+    else if (expr->type() == ExprType::SUBQUERY) {
+      return RC::INVALID_ARGUMENT;
     }
     return RC::SUCCESS;
   };
@@ -267,6 +268,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
 
     // 4. Group By 语义检查
+    OrderByStmt *groupby_orderby_stmt = nullptr;
     if (!select_sql.groupby_exprs.empty()) {
       // 4.1 Group By 的project exprs 语义检查，投影的非聚合函数表达式必须在 group by 中
       for (auto & project_expr : projects_query) {
@@ -291,14 +293,74 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
           return RC::INVALID_ARGUMENT;
         }
       }
+
+      // 4.3 构造 group by 的 sort stmt
+      std::vector<std::unique_ptr<OrderByUnit>> groupby_orderby_units;
+      std::vector<std::unique_ptr<Expression>>  sort_exprs;
+      for (auto groupby_expr : select_sql.groupby_exprs) {
+        Expression *unit = groupby_expr->unique_ptr_copy().release();
+        groupby_orderby_units.emplace_back(std::make_unique<OrderByUnit>(unit, true));
+      }
+      groupby_orderby_stmt = new OrderByStmt();
+      groupby_orderby_stmt->set_orderby_units(std::move(groupby_orderby_units));
+      for (auto & field_expr : field_exprs) {
+        sort_exprs.emplace_back(field_expr->unique_ptr_copy().release());
+      }
+      for (auto & groupby_expr : select_sql.groupby_exprs) {
+        sort_exprs.emplace_back(groupby_expr->unique_ptr_copy().release());
+      }
+      groupby_orderby_stmt->set_exprs(std::move(sort_exprs));
     }
     // 5. 创建 groupby stmt
     rc = GroupByStmt::create(
       select_sql.groupby_exprs,
       groupby_stmt,
       std::move(aggr_exprs), 
-      std::move(field_exprs));
+      std::move(field_exprs),
+      groupby_orderby_stmt);
     select_sql.groupby_exprs.clear();
+  }
+
+  OrderByStmt *orderby_stmt = nullptr;
+  if (!select_sql.orderby_nodes.empty()) {
+
+    // 1. 提取所有select子句的fields和聚合函数的结果传递给OrderByStmt，
+    // 根源：因为orderby的物理算子是group_by的父亲，聚合函数在group_by中计算，所以需要传递给orderby，再传给proj
+    std::vector<std::unique_ptr<Expression>> orderby_proj_fields;
+
+    auto collect_orderby_proj = [&orderby_proj_fields](Expression * expr) {
+      if (expr->type() == ExprType::FIELD) {
+        orderby_proj_fields.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->unique_ptr_copy().release()));
+      }
+    };
+    auto collect_orderby_aggr = [&orderby_proj_fields](Expression * expr) {
+      if (expr->type() == ExprType::AGGRFUNCTION) {
+        orderby_proj_fields.emplace_back(static_cast<AggrFunctionExpr*>(static_cast<AggrFunctionExpr*>(expr)->unique_ptr_copy().release()));
+      }
+    };
+
+    for (auto& project : projects_query) {
+      project->traverse(collect_orderby_aggr, [](const Expression *) { return true; });
+      project->traverse(collect_orderby_proj, [](const Expression *expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+    }
+
+    for (size_t i = 0 ; i < select_sql.orderby_nodes.size() ; i++){
+      Expression* expr = select_sql.orderby_nodes[i].expr;
+      if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
+      LOG_WARN("project expr traverse check_field error!");
+      return rc;
+      }
+    }
+    rc = OrderByStmt::create(db,
+      select_sql.orderby_nodes,
+      std::move(orderby_proj_fields),
+      orderby_stmt);
+
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("cannot construct orderby stmt");
+      return rc;
+    }
+    select_sql.orderby_nodes.clear();
   }
 
   // everything alright
@@ -309,6 +371,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->join_stmt_.swap(join_stmt);
   select_stmt->groupby_stmt_ = groupby_stmt;
   select_stmt->having_filter_stmt_ = having_filter_stmt;
+  select_stmt->orderby_stmt_ = orderby_stmt;
   stmt = select_stmt;
 
   return RC::SUCCESS;

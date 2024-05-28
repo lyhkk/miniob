@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <common/log/log.h>
 #include <memory>
+#include <utility>
 
 #include "sql/operator/calc_logical_operator.h"
 #include "sql/operator/delete_logical_operator.h"
@@ -29,8 +30,10 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/table_get_logical_operator.h"
 #include "sql/operator/update_logical_operator.h"
 #include "sql/operator/groupby_logical_operator.h"
+#include "sql/operator/orderby_logical_operator.h"
 
 #include "sql/stmt/groupby_stmt.h"
+#include "sql/stmt/orderby_stmt.h"
 #include "sql/stmt/calc_stmt.h"
 #include "sql/stmt/delete_stmt.h"
 #include "sql/stmt/explain_stmt.h"
@@ -102,6 +105,18 @@ RC LogicalPlanGenerator::create_plan(GroupByStmt *groupby_stmt, std::unique_ptr<
   return RC::SUCCESS;
 }
 
+RC LogicalPlanGenerator::create_plan(OrderByStmt *orderby_stmt, std::unique_ptr<LogicalOperator> &logical_operator) {
+  if (orderby_stmt == nullptr) {
+    logical_operator = nullptr;
+    return RC::SUCCESS;
+  }
+
+  unique_ptr<LogicalOperator> orderby_oper(
+    new OrderByLogicalOperator(std::move(orderby_stmt->order_units()), std::move(orderby_stmt->exprs())));
+  logical_operator = std::move(orderby_oper);
+  return RC::SUCCESS;
+}
+
 RC LogicalPlanGenerator::create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator)
 {
   logical_operator.reset(new CalcLogicalOperator(std::move(calc_stmt->expressions())));
@@ -143,9 +158,7 @@ RC LogicalPlanGenerator::create_plan(JoinStmt *join_stmt, const std::vector<Fiel
   if (join_stmt->condition() == nullptr) {
     logical_operator.reset(join_oper);
   } else {
-    unique_ptr<LogicalOperator> predicate_oper;
-    rc = create_plan(join_stmt->condition(), predicate_oper);
-    logical_operator.swap(predicate_oper);
+    logical_operator.reset(new PredicateLogicalOperator(std::move(join_stmt->condition())));
     logical_operator->add_child(unique_ptr<LogicalOperator>(join_oper));
   }
   return rc;
@@ -157,9 +170,6 @@ RC LogicalPlanGenerator::create_plan(
   unique_ptr<LogicalOperator> father_logical_oper(nullptr);
   unique_ptr<LogicalOperator> table_oper(nullptr);
   std::vector<unique_ptr<Expression>> &projects = select_stmt->projects();
-
-  // const std::vector<Table *> &tables     = select_stmt->tables();
-  // const std::vector<Field> &all_fields = select_stmt->query_fields();
 
   // 目前不需要all_fields在TableGetLogicalOperator
   std::vector<Field> all_fields;
@@ -189,12 +199,27 @@ RC LogicalPlanGenerator::create_plan(
   }
 
   unique_ptr<LogicalOperator> groupby_oper;
+  unique_ptr<LogicalOperator> sortby_oper;
   if (select_stmt->groupby_stmt() != nullptr) {
     rc = create_plan(select_stmt->groupby_stmt(), groupby_oper);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
       return rc;
     }
+    if (select_stmt->groupby_stmt()->sortby_stmt() != nullptr) {
+      rc = create_plan(select_stmt->groupby_stmt()->sortby_stmt(), sortby_oper);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+        return rc;
+      }
+    }
+    if (sortby_oper) {
+      if (father_logical_oper) {
+        sortby_oper->add_child(std::move(father_logical_oper));
+      }
+      father_logical_oper = std::move(sortby_oper);
+    }
+    
     if (groupby_oper) {
       if (father_logical_oper) {
         groupby_oper->add_child(std::move(father_logical_oper));
@@ -205,7 +230,7 @@ RC LogicalPlanGenerator::create_plan(
 
   unique_ptr<LogicalOperator> having_filter_oper;
   if (select_stmt->having_filter_stmt() != nullptr) {
-    rc = create_plan(select_stmt->having_filter_stmt(), groupby_oper);
+    rc = create_plan(select_stmt->having_filter_stmt(), having_filter_oper);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
       return rc;
@@ -218,7 +243,21 @@ RC LogicalPlanGenerator::create_plan(
     }
   }
 
-
+    if (select_stmt->orderby_stmt()) {
+    unique_ptr<LogicalOperator> orderby_oper;
+    rc = create_plan(select_stmt->orderby_stmt(), orderby_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create orderby logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if(orderby_oper){
+      if (father_logical_oper) {
+        orderby_oper->add_child(std::move(father_logical_oper));
+      }
+      father_logical_oper = std::move(orderby_oper);
+    }
+  }
+  
   unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(projects));
   if (father_logical_oper) {
     project_oper->add_child(std::move(father_logical_oper));
@@ -234,6 +273,18 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
   if (filter_stmt == nullptr || filter_stmt->condition() == nullptr) {
     return RC::SUCCESS;
   }
+
+  auto process_sub_query = [](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_subquery_logical_oper();
+    }
+    return RC::SUCCESS;
+  };
+  if (RC rc = filter_stmt->condition()->traverse_check(process_sub_query); OB_FAIL(rc)) {
+    return rc;
+  }
+  
   cmp_exprs.emplace_back(std::move(filter_stmt->condition()));
   unique_ptr<PredicateLogicalOperator> predicate_oper;
   if (!cmp_exprs.empty()) {

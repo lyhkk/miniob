@@ -39,6 +39,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/optimizer/physical_plan_generator.h"
 #include "sql/operator/groupby_logical_operator.h"
 #include "sql/operator/groupby_physical_operator.h"
+#include "sql/operator/orderby_logical_operator.h"
+#include "sql/operator/orderby_physical_operator.h"
 
 using namespace std;
 
@@ -86,6 +88,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
     case LogicalOperatorType::GROUPBY: {
       return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper);
     }
+
+    case LogicalOperatorType::ORDERBY: {
+      return create_plan(static_cast<OrderByLogicalOperator &>(logical_operator), oper);
+    }
     default: {
       return RC::INVALID_ARGUMENT;
     }
@@ -101,7 +107,20 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
 
   Index     *index      = nullptr;
   ValueExpr *value_expr = nullptr;
+
+  // for subquery
+  auto process_sub_query = [](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_subquery_physical_oper();
+    }
+    return RC::SUCCESS;
+  };
   for (auto &expr : predicates) {
+    RC rc = expr->traverse_check(process_sub_query);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
       // 简单处理，就找等值查询
@@ -177,6 +196,17 @@ RC PhysicalPlanGenerator::create_plan(PredicateLogicalOperator &pred_oper, uniqu
   ASSERT(expressions.size() == 1, "predicate logical operator's children should be 1");
 
   unique_ptr<Expression> expression = std::move(expressions.front());
+
+  rc = expression->traverse_check([](Expression* expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_subquery_physical_oper();
+    }
+    return RC::SUCCESS;
+  });
+  if (RC::SUCCESS != rc) {
+    return rc;
+  }
   oper = unique_ptr<PhysicalOperator>(new PredicatePhysicalOperator(std::move(expression)));
   oper->add_child(std::move(child_phy_oper));
   return rc;
@@ -348,6 +378,32 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, std:
     std::move(groupby_oper.aggr_exprs()),
     std::move(groupby_oper.field_exprs()));
   oper = unique_ptr<PhysicalOperator>(groupby_operator);
+
+  if (child_physical_oper) {
+    oper->add_child(std::move(child_physical_oper));
+  }
+
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &logical_operator, std::unique_ptr<PhysicalOperator> &oper) {
+  vector<unique_ptr<LogicalOperator>> &child_opers = logical_operator.children();
+  unique_ptr<PhysicalOperator> child_physical_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_physical_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create orderby logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  OrderByPhysicalOperator *orderby_operator = new OrderByPhysicalOperator(
+    std::move(logical_operator.orderby_units()),
+    std::move(logical_operator.proj_expressions()));
+  oper = unique_ptr<PhysicalOperator>(orderby_operator);
 
   if (child_physical_oper) {
     oper->add_child(std::move(child_physical_oper));

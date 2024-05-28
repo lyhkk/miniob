@@ -9,35 +9,15 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
 //
-// Created by wangyunlai on 2021/5/7.
+// Created by Lyu Yiheng on 2024/05/23
 //
 
-#pragma once
+# include "sql/operator/orderby_logical_operator.h"
 
-namespace common {
-
-class Bitmap
+OrderByLogicalOperator::OrderByLogicalOperator(
+  std::vector<std::unique_ptr<OrderByUnit>> &&orderby_units,
+  std::vector<std::unique_ptr<Expression>> &&proj_expressions)
+    : orderby_units_(std::move(orderby_units)),
+    proj_expressions_(std::move(proj_expressions))
 {
-public:
-  Bitmap();
-  Bitmap(char *bitmap, int size);
-
-  void init(char *bitmap, int size);
-  bool get_bit(int index);
-  bool get_bit(int index) const;
-  void set_bit(int index);
-  void clear_bits();
-  void clear_bit(int index);
-
-  /**
-   * @param start 从哪个位开始查找，start是包含在内的
-   */
-  int next_unsetted_bit(int start);
-  int next_setted_bit(int start);
-
-private:
-  char *bitmap_;
-  int   size_;
-};
-
-}  // namespace common
+} 

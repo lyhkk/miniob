@@ -21,11 +21,11 @@ See the Mulan PSL v2 for more details. */
 #include <regex>
 #include <cmath>
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "dates", "ints", "floats", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "dates", "floats","nulls", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
-  if (type >= UNDEFINED && type <= FLOATS) {
+  if (type >= UNDEFINED && type <= NULLS) {
     return ATTR_TYPE_NAME[type];
   }
   return "unknown";
@@ -165,6 +165,9 @@ void Value::set_value(const Value &value)
     case DATES: {
       set_date(value.get_int());
     } break;
+    case NULLS: {
+      set_null();
+    } break;
     case BOOLEANS: {
       set_boolean(value.get_boolean());
     } break;
@@ -209,6 +212,9 @@ std::string Value::to_string() const
       else
         os << d;
     } break;
+    case NULLS: {
+      os << "NULL";
+    } break;
     case BOOLEANS: {
       os << num_value_.bool_value_;
     } break;
@@ -242,8 +248,24 @@ int Value::like_type_compare(const Value &other) const
   return -1;  // TODO return rc?
 }
 
+/*
+ * @brief compare two values
+ * @param other the other value to compare
+ * @return 0 if equal, >0 if this > other, <0 if this < other
+ */
 int Value::compare(const Value &other) const
 {
+  if(this->is_null() || other.is_null())
+  {
+    if(this->is_null() && other.is_null() )
+    {
+      return 0;
+    }
+    else
+    {
+      return -1;
+    }
+  }
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
       case INTS: {
@@ -275,10 +297,10 @@ int Value::compare(const Value &other) const
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == CHARS) {
-    float other_data = stof(other.str_value_);
+    float other_data = other.get_float();
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   } else if (this->attr_type_ == CHARS && other.attr_type_ == FLOATS) {
-    float this_data = stof(this->str_value_);
+    float this_data = this->get_float();
     return common::compare_float((void *)&this_data, (void *)&other.num_value_.float_value_);
   }
   LOG_WARN("not supported");
