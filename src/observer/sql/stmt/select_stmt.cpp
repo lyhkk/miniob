@@ -22,7 +22,9 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 #include <memory>
+#include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 SelectStmt::~SelectStmt()
@@ -45,7 +47,7 @@ SelectStmt::~SelectStmt()
   }
 }
 
-static void wildcard_fields(Table *table, std::vector<std::unique_ptr<Expression>> &projects_exprs_, bool is_single_table)
+static void wildcard_fields(Table *table, std::string alias, std::vector<std::unique_ptr<Expression>> &projects_exprs_, bool is_single_table)
 {
   const TableMeta &table_meta = table->table_meta();
   const int        field_num  = table_meta.field_num();
@@ -56,26 +58,13 @@ static void wildcard_fields(Table *table, std::vector<std::unique_ptr<Expression
       tmp->set_field(table, field_meta);
       if (is_single_table) {
         tmp->set_name(tmp->field_name());
-      } else {
+      } else if (alias.empty()) {
         tmp->set_name(std::string(tmp->table_name()) + "." + tmp->field_name());
+      } else {
+        tmp->set_name(alias + "." + tmp->field_name());
       }
       projects_exprs_.emplace_back(tmp);
     }
-    // int           is_length_func = relation_attr.is_length_func;
-    // int           is_round_func  = relation_attr.is_round_func;
-    // std::string   date_format    = relation_attr.date_format;
-    // int           round_num      = relation_attr.round_num;
-    // AggregateType aggregate_type = relation_attr.aggregate_type;
-    // aggregation function: 只有count可以做count(*)
-    // if (aggregate_type != AggregateType::NONE && aggregate_type != AggregateType::COUNT_STAR) {
-    //   LOG_WARN("invalid query field. The aggregate function cannot receive more than one field.");
-    //   return RC::SCHEMA_FIELD_MISSING;
-    // }
-    // field_metas.push_back(
-    //     Field(table, table_meta.field(i), is_length_func, is_round_func, round_num, date_format, aggregate_type));
-    // if (aggregate_type == AggregateType::COUNT_STAR) {
-    //   break;
-    // }
   }
   return;
 }
@@ -119,6 +108,25 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     join_stmt.get()->set_condition(std::unique_ptr<Expression>(conditionExpr));
   }
 
+  std::unordered_map<std::string, std::string> table_alias_map;
+  std::set<std::string> table_alias_set;
+  if (join_table != nullptr) {
+    JoinTableSqlNode *tmp = join_table;
+    while (tmp != nullptr) {
+      if (!tmp->alias_name.empty()) {
+        if (table_alias_set.count(tmp->alias_name) != 0) {
+          LOG_WARN("duplicate table alias: %s", tmp->alias_name.c_str());
+          return RC::INVALID_ARGUMENT;
+        }
+        table_alias_set.insert(tmp->alias_name);
+        table_alias_map.insert(std::pair<std::string, std::string>(tmp->relation_name, tmp->alias_name));
+        Table *table_tmp = table_map[tmp->relation_name];
+        table_map.insert(std::pair<std::string, Table *>(tmp->alias_name, table_tmp));
+      }
+      tmp = tmp->sub_join;
+    }
+  }
+
   bool has_aggregate_func = false;
   bool is_single_table = (tables.size() == 1);
   Table *default_table = nullptr;
@@ -126,10 +134,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     default_table = tables[0];
   }
 
-  auto check_project_expr = [&table_map, &tables, &default_table, &has_aggregate_func](Expression *expr) -> RC {
+  auto check_project_expr = [&table_map, &tables, &default_table, &has_aggregate_func, &table_alias_map](Expression *expr) -> RC {
     if (expr->type() == ExprType::FIELD) {
       FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
-      if (field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
+      if (field_expr->check_field(table_map, tables, default_table, table_alias_map) != RC::SUCCESS) {
         return RC::SCHEMA_FIELD_MISSING;
       }
     }
@@ -168,10 +176,21 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
           return RC::INVALID_ARGUMENT; // not allow: select *; select * as xxx;
         }
         for (Table *table : tables) {
-          wildcard_fields(table, projects_query, is_single_table);
+          if (table_alias_map.count(table->name())) {
+            wildcard_fields(table, table_alias_map[table->name()], projects_query, is_single_table);
+          } else {
+            wildcard_fields(table, std::string(), projects_query, is_single_table);
+          }
         }
       } 
       else if (0 == strcmp(field_name, "*")) {
+        // for (auto &src_name : table_alias_map) {
+        //   if (0 == strcmp(src_name.second.c_str(), table_name)) {
+        //     table_name = src_name.first.c_str();
+        //     field_expr->set_table_name(table_name);
+        //     break;
+        //   }
+        // }
         auto iter = table_map.find(table_name);
         if (iter == table_map.end()) {
           LOG_WARN("no such table in from list: %s", table_name);
@@ -179,10 +198,14 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         }
 
         Table *table = iter->second;
-        wildcard_fields(table, projects_query, is_single_table);
+        if (table_alias_map.count(table->name())) {
+          wildcard_fields(table, table_alias_map[table->name()], projects_query, is_single_table);
+        } else {
+          wildcard_fields(table, std::string(), projects_query, is_single_table);
+        }
       }
       else {
-        if(field_expr->check_field(table_map, tables, default_table) != RC::SUCCESS) {
+        if(field_expr->check_field(table_map, tables, default_table, table_alias_map) != RC::SUCCESS) {
           LOG_INFO("expr->check_field error!");
           return RC::SCHEMA_FIELD_MISSING;
         }

@@ -50,14 +50,21 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   const char* field_name = field_name_.c_str();
   Table * table = nullptr;
   if(!common::is_blank(table_name)) { //表名不为空
-    // check table
+    // for (auto &src_name : table_alias_map) {
+    //   if (0 == strcmp(src_name.second.c_str(), table_name)) {
+    //     table_name = src_name.first.c_str();
+    //     set_table_name(table_name);
+    //     break;
+    //   }
+    // }
     auto iter = table_map.find(table_name);
     if (iter == table_map.end()) {
       LOG_WARN("no such table in from list: %s", table_name);
       return RC::SCHEMA_FIELD_MISSING;
     }
     table = iter->second;
-  } else { // 表名为空，只有列名
+  } 
+  else { // 表名为空，只有列名
     if (tables.size() != 1 && default_table == nullptr) {
       LOG_WARN("invalid. I do not know the attr's table. attr=%s", this->field_name());
       return RC::SCHEMA_FIELD_MISSING;
@@ -86,7 +93,8 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   if (alias().empty()) {
     if (is_single_table) {
       set_alias(field_name_);
-    } else {
+    } 
+    else {
       auto iter = table_alias_map.find(table_name_);
       if (iter != table_alias_map.end()) {
         set_alias(iter->second + "." + field_name_);
