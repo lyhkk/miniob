@@ -120,9 +120,13 @@ RC UpdatePhysicalOperator::extract_old_value(Record &record)
       return RC::SCHEMA_FIELD_NOT_EXIST;
     }
 
+    
+
     // 判断 新值与旧值是否相等
     const FieldMeta* null_field = table_->table_meta().null_field();
     common::Bitmap old_null_bitmap(record.data() + null_field->offset(), table_->table_meta().field_num());
+    
+
     if (same_data) {
       if (value->is_null() && old_null_bitmap.get_bit(field_index)) {
         // both null
@@ -130,8 +134,21 @@ RC UpdatePhysicalOperator::extract_old_value(Record &record)
       else if (value->is_null() || old_null_bitmap.get_bit(field_index)) {
         same_data = false;
       }
-      else if (0 != memcmp(record.data() + field_offset, value->data(), field_length)) {
-        same_data = false;
+      else {
+        char *new_value = new char[field_length + 1];
+        if(value->length() == field_length) {
+          memcpy(new_value, value->data(), value->length());
+        }
+        else {
+          memcpy(new_value, value->data(), value->length());
+          memset(new_value + value->length(), '\0', field_length - value->length());
+        }
+        if (0 == memcmp(record.data()+field_offset, new_value, field_length)) {
+          same_data = true;
+        }
+        else {
+          same_data = false;
+        }
       }
     }
   }
