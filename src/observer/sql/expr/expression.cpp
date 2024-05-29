@@ -28,6 +28,12 @@ See the Mulan PSL v2 for more details. */
 #include <string>
 using namespace std;
 
+static map<int, std::string> month_name = {
+  {1, "January"}, {2, "February"}, {3, "March"}, {4, "April"},
+  {5, "May"}, {6, "June"}, {7, "July"}, {8, "August"},
+  {9, "September"}, {10, "October"}, {11, "November"}, {12, "December"}
+};
+
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
   if(is_first_)
@@ -766,7 +772,7 @@ RC FuncExpr::get_value(const Tuple &tuple, Value &value) const{
       assert(params_.size() == 2);
       // 1. get cell && check type
       rc = params_[0]->get_value(tuple, cell);
-      if (rc != RC::SUCCESS) {
+      if (rc != RC::SUCCESS || cell.attr_type() != AttrType::DATES) {
         LOG_WARN("failed to get value of child expression. rc=%s", strrc(rc));
         return rc;
       }
@@ -778,22 +784,96 @@ RC FuncExpr::get_value(const Tuple &tuple, Value &value) const{
         LOG_WARN("failed to get value of child expression. rc=RC::INTERNAL");
         return RC::INTERNAL;
       }
-      std::string date_format = format_value.get_string();
+      std::string date_format = format_value.get_string(); // 日期格式
 
       // 3. format date && set value
       int date = cell.get_int();
       std::string date_str = std::to_string(date);
-      std::stringstream ss(date_str);
-      tm tm = {};
-      char* formatted_date = strptime(date_str.c_str(), "%Y%m%d", &tm);
-      if (formatted_date == NULL) {
-        LOG_INFO("A weird date. date=%s", date_str.c_str()); // 理论上不会出现这种情况，为了完整性
+      std::string date_formatted_str; // 格式化后的日期字符串
+      int year = date / 10000;
+      int month = (date / 100) % 100;
+      int day = date % 100;
+      for (size_t i = 0; i < strlen(date_format.c_str()); i++) {
+        if (65 <= date_format[i] && date_format[i] <= 122) {
+          switch (date_format[i]) {
+            case 'Y': {
+              char tmp[5];
+              sprintf(tmp, "%d", year);
+              date_formatted_str += tmp;
+              break;
+            }
+            case 'y': {
+              char tmp[5];
+              sprintf(tmp, "%d", year % 100);
+              if (0 <= (year % 100) && (year % 100) <= 9) {
+                date_formatted_str += "0";
+              }
+              date_formatted_str += tmp;
+              break;
+            }
+            case 'M': {
+              if (month <= 0 || month > 12) {
+                return RC::INTERNAL;
+              }
+              date_formatted_str += month_name[month];
+              break;
+            }
+            case 'm': {
+              char tmp[3];
+              sprintf(tmp, "%d", month);
+              if (0 <= month && month <= 9) {
+                date_formatted_str += "0";
+              }
+              date_formatted_str += tmp;
+              break;
+            }
+            case 'D': {
+              char tmp[3];
+              sprintf(tmp, "%d", day);
+              date_formatted_str += tmp;
+              if (11 <= day && day <= 13) {
+                date_formatted_str += "th";
+              } else {
+                switch (day % 10) {
+                  case 1: {
+                    date_formatted_str += "st";
+                    break;
+                  }
+                  case 2: {
+                    date_formatted_str += "nd";
+                    break;
+                  }
+                  case 3: {
+                    date_formatted_str += "rd";
+                    break;
+                  }
+                  default: {
+                    date_formatted_str += "th";
+                    break;
+                  }
+                }
+              }
+              break;
+            }
+            case 'd': {
+              char tmp[3];
+              sprintf(tmp, "%d", day);
+              if (0 <= day && day <= 9) {
+                date_formatted_str += "0";
+              }
+              date_formatted_str += tmp;
+              break;
+            }
+            default: {
+              date_formatted_str += date_format[i];
+              break;
+            }
+          }
+        } else if (date_format[i] != '%') {
+          date_formatted_str += date_format[i];
+        }
       }
-      else {
-        char buffer[80];
-        strftime(buffer, 80, date_format.c_str(), &tm);
-        value.set_string(buffer);
-      }
+      value.set_string(date_formatted_str.c_str());
     } break;
   }
   return rc;
