@@ -153,6 +153,7 @@ public:
 
   const char *table_name() const { return table_name_.c_str(); }
   const char *field_name() const { return field_name_.c_str(); }
+  void set_table_name(const char *table_name) { table_name_ = table_name; }
 
   RC get_value(const Tuple &tuple, Value &value) const override;
 
@@ -484,7 +485,7 @@ public:
   SubQueryExpr(SelectSqlNode &sub_selection);
   virtual ~SubQueryExpr() = default;
 
-  RC generate_subquery_stmt(Db* db);
+  RC generate_subquery_stmt(Db* db, const std::unordered_map<std::string, Table *> &parent_table_map);
   RC generate_subquery_logical_oper();
   RC generate_subquery_physical_oper();
   bool has_more_row(const Tuple &tuple) const;
