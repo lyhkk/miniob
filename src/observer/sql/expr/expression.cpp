@@ -802,9 +802,9 @@ RC FuncExpr::get_value(const Tuple &tuple, Value &value) const{
 SubQueryExpr::SubQueryExpr(SelectSqlNode &subquery) : subquery_(std::make_unique<SelectSqlNode>(subquery))
 {}
 
-RC SubQueryExpr::generate_subquery_stmt(Db* db) {
+RC SubQueryExpr::generate_subquery_stmt(Db* db, const std::unordered_map<std::string, Table *> &parent_table_map) {
   Stmt * tmp_stmt = nullptr;
-  if (SelectStmt::create(db, *subquery_.get(), tmp_stmt) != RC::SUCCESS) {
+  if (SelectStmt::create(db, *subquery_.get(), tmp_stmt, parent_table_map) != RC::SUCCESS) {
     return RC::INTERNAL;
   }
 
@@ -855,6 +855,7 @@ RC SubQueryExpr::close()
 
 RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
 {
+  physical_oper_->set_parent_tuple(const_cast<Tuple*>(&tuple));
   RC rc = physical_oper_->next();
   if (RC::SUCCESS != rc) {
     return rc;
@@ -864,5 +865,6 @@ RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
 
 bool SubQueryExpr::has_more_row(const Tuple &tuple) const
 {
+  physical_oper_->set_parent_tuple(const_cast<Tuple*>(&tuple));
   return physical_oper_->next() != RC::RECORD_EOF;
 }

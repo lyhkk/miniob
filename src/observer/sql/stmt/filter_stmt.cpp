@@ -50,7 +50,7 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
       // 条件表达式里才有子查询
       SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
       LOG_INFO("subquery_expr->generate_subquery_stmt");
-      return subquery_expr->generate_subquery_stmt(db);
+      return subquery_expr->generate_subquery_stmt(db, *tables);
     }
     return RC::SUCCESS;
   };

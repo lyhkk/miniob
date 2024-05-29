@@ -69,7 +69,7 @@ static void wildcard_fields(Table *table, std::string alias, std::vector<std::un
   return;
 }
 
-RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, const std::unordered_map<std::string, Table *> &parent_table_map)
 {
   if (nullptr == db) {
     LOG_WARN("invalid argument. db is null");
@@ -78,7 +78,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
   // collect tables in `from` statement
   std::vector<Table *>                     tables;
-  std::unordered_map<std::string, Table *> table_map;
+  std::unordered_map<std::string, Table *> table_map = parent_table_map;
 
   RC                        rc = RC::SUCCESS;
   std::unique_ptr<JoinStmt> join_stmt;
