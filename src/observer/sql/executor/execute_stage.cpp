@@ -60,31 +60,9 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
   unique_ptr<PhysicalOperator> &physical_operator = sql_event->physical_operator();
   ASSERT(physical_operator != nullptr, "physical operator should not be null");
 
-  // TODO 这里也可以优化一下，是否可以让physical operator自己设置tuple schema
   TupleSchema schema;
   switch (stmt->type()) {
     case StmtType::SELECT: {
-      // SelectStmt *select_stmt     = static_cast<SelectStmt *>(stmt);
-      // bool        with_table_name = select_stmt->tables().size() > 1;
-
-      // for (const Field &field : select_stmt->query_fields()) {
-      //   if (with_table_name) {
-      //     // 这个alias是为了支持函数的别名
-      //     const char *alias = field.function_alias(field.table_name(), field.field_name());
-      //     if (alias != nullptr) {
-      //       schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-      //     } else {
-      //       schema.append_cell(field.table_name(), field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-      //     }
-      //   } else {
-      //     const char *alias = field.function_alias(nullptr, field.field_name());
-      //     if (alias != nullptr) {
-      //       schema.append_cell(alias, field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-      //     } else {
-      //       schema.append_cell(field.field_name(), field.is_length_func_, field.is_round_func_, field.round_num_, field.date_format_.c_str(), field.aggregate_type_);
-      //     }
-      //   }
-      // }
       ProjectPhysicalOperator *project_operator = static_cast<ProjectPhysicalOperator *>(physical_operator.get());
       for (const unique_ptr<Expression> & expr : project_operator->projections()) {
         if (expr->alias().empty()) {
@@ -98,7 +76,11 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
     case StmtType::CALC: {
       CalcPhysicalOperator *calc_operator = static_cast<CalcPhysicalOperator *>(physical_operator.get());
       for (const unique_ptr<Expression> &expr : calc_operator->expressions()) {
-        schema.append_cell(expr->name().c_str());
+        if (expr->alias().empty()) {
+          schema.append_cell(expr->name().c_str());
+        } else {
+          schema.append_cell(expr->alias().c_str());
+        }
       }
     } break;
 

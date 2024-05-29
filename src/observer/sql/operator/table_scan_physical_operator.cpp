@@ -78,8 +78,16 @@ RC TableScanPhysicalOperator::filter(RowTuple &tuple, bool &result)
 {
   RC    rc = RC::SUCCESS;
   Value value;
+  Tuple *tuple_ = nullptr;
+  JoinedTuple joined_tuple(&tuple, parent_tuple_);
+  if (parent_tuple_ != nullptr) {
+    tuple_ = &joined_tuple;
+  } 
+  else {
+    tuple_ = &tuple;
+  }
   for (unique_ptr<Expression> &expr : predicates_) {
-    rc = expr->get_value(tuple, value);
+    rc = expr->get_value(*tuple_, value);
     if (rc != RC::SUCCESS) {
       return rc;
     }
