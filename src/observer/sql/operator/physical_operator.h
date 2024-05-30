@@ -81,7 +81,16 @@ public:
   void add_child(std::unique_ptr<PhysicalOperator> oper) { children_.emplace_back(std::move(oper)); }
 
   std::vector<std::unique_ptr<PhysicalOperator>> &children() { return children_; }
+  // 复杂子查询时，需要设置主句的tuple给子句
+  RC set_parent_tuple(Tuple *tuple) { 
+    parent_tuple_ = tuple;
+    for (auto &child : children_) {
+      child->set_parent_tuple(tuple);
+    }
+    return RC::SUCCESS; 
+  }
 
 protected:
   std::vector<std::unique_ptr<PhysicalOperator>> children_;
+  Tuple *parent_tuple_ = nullptr;
 };

@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/operator/predicate_physical_operator.h"
 #include "common/log/log.h"
+#include "sql/expr/tuple.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/field/field.h"
 #include "storage/record/record.h"
@@ -40,10 +41,17 @@ RC PredicatePhysicalOperator::next()
 
   while (RC::SUCCESS == (rc = oper->next())) {
     Tuple *tuple = oper->current_tuple();
+    JoinedTuple joined_tuple;
     if (nullptr == tuple) {
       rc = RC::INTERNAL;
       LOG_WARN("failed to get tuple from operator");
       break;
+    }
+
+    if (parent_tuple_ != nullptr) {
+      joined_tuple.set_left(parent_tuple_);
+      joined_tuple.set_right(tuple);
+      tuple        = &joined_tuple;
     }
 
     Value value;
