@@ -83,6 +83,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
         if (RC rc = update.values[i]->traverse_check(check_field); RC::SUCCESS != rc) {
           return rc;
         }
+        valid = true;
       }
     }
     if(!valid) {

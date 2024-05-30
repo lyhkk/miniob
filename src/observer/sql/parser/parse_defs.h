@@ -143,7 +143,7 @@ struct DeleteSqlNode
 struct UpdateKV
 {
   std::string attribute_name;
-  Expression  *value;
+  Expression  *value = nullptr;
 };
 
 struct UpdateSqlNode
