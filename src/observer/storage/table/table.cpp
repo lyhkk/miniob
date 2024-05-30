@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/defs.h"
 #include "common/lang/string.h"
 #include "common/log/log.h"
+#include "sql/expr/tuple.h"
 #include "sql/parser/value.h"
 #include "storage/buffer/disk_buffer_pool.h"
 #include "storage/common/condition_filter.h"
@@ -554,7 +555,7 @@ RC Table::sync()
   return rc;
 }
 
-RC Table::update_record(Record &record, const char *attr_name, Value *value)
+RC Table::update_record(Record &record, const char *attr_name, Value* value)
 {
   std::vector<Value*> values;
   values.emplace_back(value);
