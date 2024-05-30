@@ -4,6 +4,7 @@
 
 #include "common/log/log.h"
 #include "sql/operator/update_physical_operator.h"
+#include "sql/expr/tuple.h"
 #include "storage/record/record.h"
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
@@ -43,8 +44,9 @@ RC UpdatePhysicalOperator::next()
 
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record &record = row_tuple->record();
+    std::vector<Value*> values;
     RC rc2 = RC::SUCCESS;
-    if (RC::SUCCESS != (rc2 = extract_old_value(record))) {
+    if (RC::SUCCESS != (rc2 = extract_old_value(record, values))) {
       if (RC::RECORD_DUPLICATE_KEY == rc2) { 
         continue;
       }
@@ -52,8 +54,7 @@ RC UpdatePhysicalOperator::next()
         return rc2; 
       }
     }
-
-    rc = trx_->update_record(table_, record, fields_, values_);
+    rc = trx_->update_record(table_, record, fields_, values);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to update record: %s", strrc(rc));
       for (size_t i = old_records_.size() - 2; i >= 0; i--) {
@@ -76,30 +77,62 @@ RC UpdatePhysicalOperator::next()
   return RC::RECORD_EOF;
 }
 
-RC UpdatePhysicalOperator::extract_old_value(Record &record)
+RC UpdatePhysicalOperator::extract_old_value(Record &record, std::vector<Value*> &values)
 {
   RC rc = RC::SUCCESS;
   int       field_offset   = -1;
   int       field_length   = -1;
   int       field_index    = -1;
-  bool      same_data      = true; // 标识当前行数据更新后，是否与更前相同
+  bool      same_data      = true; // 标识当前行数据更新后，是否与之前相同
   const int sys_field_num  = table_->table_meta().sys_field_num();
   const int user_field_num = table_->table_meta().field_num() - sys_field_num;
-
+  EmptyTuple tp;
   std::vector<Value> old_value;
+  Value raw_value;
   for (size_t c_idx = 0; c_idx < fields_.size(); c_idx++) {
-    Value *value = values_[c_idx];
     std::string &attr_name = fields_[c_idx];
-
     for (int i = 0; i < user_field_num; ++i) {
       const FieldMeta *field_meta = table_->table_meta().field(i + sys_field_num);
       const char      *field_name = field_meta->name();
       if (0 != strcmp(field_name, attr_name.c_str())) {
         continue;
       }
+      std::unique_ptr<Expression>& expr = values_[c_idx];
+      
+      if (expr->type() == ExprType::SUBQUERY) {
+        SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr.get());
+        rc = subquery_expr->open(nullptr);
+        if (RC::SUCCESS != rc) {
+          return rc;
+        }
+        rc = subquery_expr->get_value(tp, raw_value);
+        if (RC::RECORD_EOF == rc) {
+          //子查询为空集时设置null
+          raw_value.set_null();
+          rc = RC::SUCCESS;
+        }
+        else if (RC::SUCCESS != rc) {
+          return rc;
+        }
+        else if (subquery_expr->has_more_row(tp)) {
+          //子查询为多行，直接跳过后续检查
+          invalid_ = true;
+          break;
+        }
+        subquery_expr->close();
+        if (invalid_) {
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+      else {
+        if (rc = expr->get_value(tp, raw_value); RC::SUCCESS != rc) {
+          return rc;
+        }
+      }
+      //拿到raw_value
       AttrType attr_type  = field_meta->type();
-      AttrType value_type = value->attr_type();
-      if (value->is_null() && field_meta->nullable()) {
+      AttrType value_type = raw_value.attr_type();
+      if (raw_value.is_null() && field_meta->nullable()) {
         // empty
       }
       else if (attr_type != value_type) {
@@ -108,43 +141,42 @@ RC UpdatePhysicalOperator::extract_old_value(Record &record)
             field_meta->name(),
             attr_type,
             value_type);
+        invalid_ = true;
         return RC::SCHEMA_FIELD_TYPE_MISMATCH;
       }
       field_offset = field_meta->offset();
       field_length = field_meta->len();
       field_index = i + sys_field_num;
       old_value.emplace_back(attr_type, record.data() + field_offset, field_length);
+      Value* valueptr = new Value(raw_value);
+      values.emplace_back(valueptr);
       break;
     }
     if (field_length < 0 || field_offset < 0) {
       return RC::SCHEMA_FIELD_NOT_EXIST;
     }
-
-    
-
-    // 判断 新值与旧值是否相等
+    // 判断新值与旧值是否相等
     const FieldMeta* null_field = table_->table_meta().null_field();
     common::Bitmap old_null_bitmap(record.data() + null_field->offset(), table_->table_meta().field_num());
     
-
     if (same_data) {
-      if (value->is_null() && old_null_bitmap.get_bit(field_index)) {
+      if (raw_value.is_null() && old_null_bitmap.get_bit(field_index)) {
         // both null
       }
-      else if (value->is_null() || old_null_bitmap.get_bit(field_index)) {
+      else if (raw_value.is_null() || old_null_bitmap.get_bit(field_index)) {
         same_data = false;
       }
       else {
         char *new_value = new char[field_length + 1];
-        if(value->length() == field_length) {
-          memcpy(new_value, value->data(), value->length());
+        if(raw_value.length() == field_length) {
+          memcpy(new_value, raw_value.data(), raw_value.length());
         }
         else {
-          memcpy(new_value, value->data(), value->length());
-          memset(new_value + value->length(), '\0', field_length - value->length());
+          memcpy(new_value, raw_value.data(), raw_value.length());
+          memset(new_value + raw_value.length(), '\0', field_length - raw_value.length());
         }
         if (0 == memcmp(record.data()+field_offset, new_value, field_length)) {
-          same_data = true;
+          //same data
         }
         else {
           same_data = false;

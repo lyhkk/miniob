@@ -594,13 +594,12 @@ update_kv_list:
     }
     ;
 update_kv:
-    ID EQ value
+    ID EQ expression
     {
       $$ = new UpdateKV;
       $$->attribute_name = $1;
-      $$->value = *$3;
+      $$->value = $3;
       free($1);
-      delete($3);
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/

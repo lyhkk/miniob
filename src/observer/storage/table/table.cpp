@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/defs.h"
 #include "common/lang/string.h"
 #include "common/log/log.h"
+#include "sql/expr/tuple.h"
 #include "sql/parser/value.h"
 #include "storage/buffer/disk_buffer_pool.h"
 #include "storage/common/condition_filter.h"
@@ -554,7 +555,7 @@ RC Table::sync()
   return rc;
 }
 
-RC Table::update_record(Record &record, const char *attr_name, Value *value)
+RC Table::update_record(Record &record, const char *attr_name, Value* value)
 {
   std::vector<Value*> values;
   values.emplace_back(value);
@@ -620,23 +621,14 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
 
     const FieldMeta* null_field = table_meta_.null_field();
 
-    //common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
     char *new_value = new char[field_length + 1];
-    //if (value->is_null()) {
-     // if (old_null_bitmap.get_bit(field_index)) {
-    //    LOG_WARN("update old value equals new value");
-      //  return RC::SUCCESS;
-     // }
+  
     if(value->length() == field_length) {
       memcpy(new_value, value->data(), value->length());
     }
     else {
       memcpy(new_value, value->data(), value->length());
       memset(new_value + value->length(), '\0', field_length - value->length());
-    }
-    if( 0 == memcmp(record.data()+field_offset, new_value, field_length)) {
-      LOG_WARN("update old value equals new value");
-      return RC::SUCCESS;
     }
     //写入新的值
     common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());

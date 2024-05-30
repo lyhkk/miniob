@@ -6,6 +6,7 @@
 
 #include "sql/operator/physical_operator.h"
 #include "sql/parser/parse.h"
+#include "sql/parser/value.h"
 #include <vector>
 
 class Trx;
@@ -18,8 +19,8 @@ class UpdateStmt;
 class UpdatePhysicalOperator : public PhysicalOperator
 {
 public:
-  UpdatePhysicalOperator(Table *table, std::vector<Value*> &values, std::vector<FieldMeta> &fields) 
-    : table_(table), values_(values)
+  UpdatePhysicalOperator(Table *table, std::vector<std::unique_ptr<Expression>> &&values, std::vector<FieldMeta> &fields) 
+    : table_(table), values_(std::move(values))
   {
     for (FieldMeta &field : fields) {
       fields_.emplace_back(field.name());
@@ -34,14 +35,15 @@ public:
   RC next() override;
   RC close() override;
 
-  RC extract_old_value(Record &record);
+  RC extract_old_value(Record &record, std::vector<Value*> &values);
   Tuple *current_tuple() override { return nullptr; }
 
 private:
   Table *table_ = nullptr;
   Trx *trx_ = nullptr;
-  std::vector<Value*> values_;
+  std::vector<std::unique_ptr<Expression>> values_;
   std::vector<std::string> fields_;
   std::vector<RID> old_records_;
   std::vector<std::vector<Value>> old_values_;
+  bool invalid_ = false; //用于回滚
 };
