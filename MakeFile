@@ -1,0 +1,28 @@
+.PHONY: build
+configure:
+    @# 生成带有代码优化的makefile
+    rm -rf ./build
+    mkdir -p ./build
+    cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+configure_debug:
+    @# 生成debug版本的makefile, 无代码优化
+    rm -rf ./build
+    mkdir -p ./build
+    cd build && cmake .. -DDEBUG=ON
+build:
+    @# 先用gen_parser.sh编译生成词法分析和语法分析的C++代码
+    @# 再用cmake编译整个项目
+    @echo "Compiling the Yacc and Lex files"
+    @cd src/observer/sql/parser && bash gen_parser.sh
+    rm -rf ./miniob
+    cd build && make -j4
+run_server_cli:
+    @# 使用cli模式启动服务端
+    ./build/bin/observer -f ./etc/observer.ini -P cli
+run_client:
+    @# 启动客户端
+    ./build/bin/obclient
+run_server:
+    @# 使用plain模式启动服务端
+    ./build/bin/observer -f ./etc/observer.ini
+none:

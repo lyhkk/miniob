@@ -49,8 +49,8 @@ RC PredicatePhysicalOperator::next()
     }
 
     if (parent_tuple_ != nullptr) {
-      joined_tuple.set_left(parent_tuple_);
-      joined_tuple.set_right(tuple);
+      joined_tuple.set_left(tuple);
+      joined_tuple.set_right(const_cast<Tuple*>(parent_tuple_));
       tuple        = &joined_tuple;
     }
 

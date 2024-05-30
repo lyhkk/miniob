@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/build/bin/observer",
             "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],
             "cwd": "${fileDirname}",
-            "preLaunchTask": "CMake Build"
+            //"preLaunchTask": "CMake Build"
         }
     ]
 }
