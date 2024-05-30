@@ -56,7 +56,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
   auto check_field = [&db](Expression *expr) {
     if (expr->type() == ExprType::SUBQUERY) {
       SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
-      return subquery_expr->generate_subquery_stmt(db);
+      return subquery_expr->generate_subquery_stmt(db, {});
     }
     return RC::SUCCESS;
   };
