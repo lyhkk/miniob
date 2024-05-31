@@ -751,5 +751,5 @@ public:
 
   RC cell_at(int index, Value &cell) const { return RC::INVALID_ARGUMENT; }
 
-  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const { return RC::INVALID_ARGUMENT; }
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const { return RC::NOTFOUND; }
 };

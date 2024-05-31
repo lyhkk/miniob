@@ -136,13 +136,14 @@ RC UpdatePhysicalOperator::extract_old_value(Record &record, std::vector<Value*>
         // empty
       }
       else if (attr_type != value_type) {
-        LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+        if (const_cast<Value&>(raw_value).typecast(field_meta->type()) != RC::SUCCESS) {
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
             table_->name(),
             field_meta->name(),
             attr_type,
             value_type);
-        invalid_ = true;
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          invalid_ = true;
+        }
       }
       field_offset = field_meta->offset();
       field_length = field_meta->len();

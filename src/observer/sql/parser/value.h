@@ -16,7 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <cstddef>
 #include <string>
-
+#include "common/rc.h"
 
 /**
  * @brief 属性的类型
@@ -112,7 +112,9 @@ public:
    * 获取对应的值
    * 如果当前的类型与期望获取的类型不符，就会执行转换操作
    */
+  RC typecast(AttrType target_type);
   int         get_int() const;
+  int         get_int_round() const; //四舍五入
   float       get_float() const;
   std::string get_string() const;
   bool        get_boolean() const;
