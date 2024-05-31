@@ -307,6 +307,42 @@ int Value::compare(const Value &other) const
   return -1;  // TODO return rc?
 }
 
+RC Value::typecast(AttrType target_type)
+  {
+    if(target_type == attr_type_)
+    {
+      return RC::SUCCESS;
+    }
+    if(target_type == DATES || attr_type_ == NULLS)
+    {
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+    switch (target_type)
+    {
+      case INTS:
+      {
+        int tmp = get_int();
+        set_int(tmp);
+      }
+        break;
+      case FLOATS:
+      {
+        float tmp = get_float();
+        set_float(tmp);
+      }
+        break;
+      case CHARS:
+      {
+        std::string tmp = get_string();
+        set_string(tmp.c_str());
+      }
+        break;
+      default:
+        break;
+    }
+    return RC::SUCCESS;
+  }
+
 int Value::get_int() const
 {
   switch (attr_type_) {
@@ -322,7 +358,7 @@ int Value::get_int() const
       return num_value_.int_value_;
     }
     case FLOATS: {
-      return (int)(num_value_.float_value_);
+      return (int)(num_value_.float_value_ + 0.5);
     }
     case DATES: {
       return num_value_.int_value_;

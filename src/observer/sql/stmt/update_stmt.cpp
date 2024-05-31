@@ -70,6 +70,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
     if (nullptr != update_field) {
       if (update.values[i]->type() == ExprType::VALUE) {
         const Value& value = static_cast<ValueExpr*>(update.values[i])->get_value();
+
         if (update_field->type() == value.attr_type() || (value.is_null() && update_field->nullable())) {
           if (update_field->type() == CHARS && update_field->len() < value.length()) {
             LOG_WARN("update chars with longer length");
@@ -77,6 +78,14 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
           else {
             valid = true;
           }
+        }
+        if (const_cast<Value&>(value).typecast(update_field->type()) != RC::SUCCESS) {
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+            table->name(), update_field->name(), update_field->type(), value.attr_type());
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
+        else {
+          valid = true;
         }
       }
       else {
