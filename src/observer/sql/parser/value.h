@@ -114,6 +114,7 @@ public:
    */
   RC typecast(AttrType target_type);
   int         get_int() const;
+  int         get_int_round() const; //四舍五入
   float       get_float() const;
   std::string get_string() const;
   bool        get_boolean() const;
