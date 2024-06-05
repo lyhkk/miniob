@@ -169,11 +169,16 @@ const IndexMeta *TableMeta::index(const char *name) const
 const IndexMeta *TableMeta::find_index_by_field(const char *field) const
 {
   for (const IndexMeta &index : indexes_) {
-    if (0 == strcmp(index.field(), field)) {
+    if (0 == strcmp(index.field().at(1).c_str(), field)) {
       return &index;
     }
   }
   return nullptr;
+}
+
+bool TableMeta::is_field_in_index(std::vector<std::string> &field_names) const
+{
+  return false;
 }
 
 const IndexMeta *TableMeta::index(int i) const { return &indexes_[i]; }

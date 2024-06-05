@@ -131,6 +131,7 @@ EXPLAIN                                 RETURN_TOKEN(EXPLAIN);
 IS                                      RETURN_TOKEN(IS);
 NOT                                     RETURN_TOKEN(NOT);
 NULL                                    RETURN_TOKEN(NULL_T);
+UNIQUE                                  RETURN_TOKEN(UNIQUE);
 LENGTH                                  RETURN_TOKEN(LENGTH);
 ROUND                                   RETURN_TOKEN(ROUND);
 DATE_FORMAT                             RETURN_TOKEN(DATE_FORMAT);
