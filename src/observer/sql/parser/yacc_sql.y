@@ -459,6 +459,19 @@ insert_stmt:        /*insert   语句的语法解析树*/
       delete $6;
       free($3);
     }
+    | INSERT INTO ID VALUES LBRACE negative_value value_list RBRACE 
+    {
+      $$ = new ParsedSqlNode(SCF_INSERT);
+      $$->insertion.relation_name = $3;
+      if ($7 != nullptr) {
+        $$->insertion.values.swap(*$7);
+        delete $7;
+      }
+      $$->insertion.values.emplace_back(*$6);
+      std::reverse($$->insertion.values.begin(), $$->insertion.values.end());
+      delete $6;
+      free($3);
+    }
     ;
 order_by_list:
 	/* empty */ {
