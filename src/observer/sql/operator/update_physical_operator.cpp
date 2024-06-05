@@ -54,7 +54,7 @@ RC UpdatePhysicalOperator::next()
         return rc2; 
       }
     }
-    rc = trx_->update_record(table_, record, fields_, values);
+    rc = table_->update_record(record, fields_, values);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to update record: %s", strrc(rc));
       for (size_t i = old_records_.size() - 2; i >= 0; i--) {
