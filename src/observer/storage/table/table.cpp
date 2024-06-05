@@ -612,115 +612,8 @@ RC Table::update_record(Record &record, const char *attr_name, Value* value)
   return update_record(record, attr_names, values);
 }
 
-RC Table::update_record(Record &record, const std::vector<std::string> &attr_names, const std::vector<Value*> &values)
-{
-  RC rc = RC::SUCCESS;
-  if (attr_names.size() != values.size() || 0 == attr_names.size()) {
-    rc = RC::INVALID_ARGUMENT;
-    LOG_WARN("fields size not match values, or empty param");
-    return rc;
-  }
-
-  int       field_offset   = -1;
-  int       field_length   = -1;
-  int       field_index    = -1;
-  const int sys_field_num  = table_meta_.sys_field_num();
-  const int user_field_num = table_meta_.field_num() - sys_field_num;
-
-  char *old_data = record.data();                        // old_data不能释放，其指向的是frame中的内存
-  char *data     = new char[table_meta_.record_size()];  // new_record->data
-  DEFER([&](){
-    delete [] data;
-    data = nullptr;
-    record.set_data(old_data);
-  });
-
-  memcpy(data, old_data, table_meta_.record_size());
-
-  for (size_t c_idx = 0; c_idx < attr_names.size(); c_idx++) {
-    Value *value = values[c_idx];
-    const std::string &attr_name = attr_names[c_idx];
-
-    // 1.先找到要更新的列
-    // 2.判断类型是否匹配
-    // 3.获取该列的 offset 和 长度
-    for (int i = 0; i < user_field_num; ++i) {
-      const FieldMeta *field_meta = table_meta_.field(i + sys_field_num);
-      const char      *field_name = field_meta->name();
-      if (0 != strcmp(field_name, attr_name.c_str())) {
-        continue;
-      }
-      AttrType attr_type  = field_meta->type();
-      AttrType value_type = value->attr_type();
-      if (value->is_null() && field_meta->nullable()) {
-        // ok
-      } else if (attr_type != value_type) {
-        LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-            name(),
-            field_meta->name(),
-            attr_type,
-            value_type);
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-      }
-      field_offset = field_meta->offset();
-      field_length = field_meta->len();
-      field_index = i + sys_field_num;
-      break;
-    }
-    if (field_length < 0 || field_offset < 0) {
-      LOG_WARN("field not find ,field name = %s", attr_name.c_str());
-      return RC::SCHEMA_FIELD_NOT_EXIST;
-    }
-
-    // 写入新的值
-    const FieldMeta* null_field = table_meta_.null_field();
-    common::Bitmap new_null_bitmap(data + null_field->offset(), table_meta_.field_num());
-    if (value->is_null()) {
-      new_null_bitmap.set_bit(field_index);
-    } else {
-      new_null_bitmap.clear_bit(field_index);
-      memcpy(data + field_offset, value->data(), field_length);   
-    }
-  }
-  record.set_data(data);  // 谁来管理old_data呢？
-
-  rc = delete_entry_of_indexes(old_data, record.rid(), false);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-        record.rid().page_num,
-        record.rid().slot_num,
-        rc,
-        strrc(rc));
-    return rc;
-  }
-
-  rc = insert_entry_of_indexes(record.data(), record.rid());
-  if (rc != RC::SUCCESS) {  // 可能出现了键值重复
-    RC rc2 = insert_entry_of_indexes(old_data, record.rid());
-    if (rc2 != RC::SUCCESS) {
-      //sql_debug("Failed to rollback index after insert index failed, rc=%s", strrc(rc2));
-      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-          name(),
-          rc2,
-          strrc(rc2));
-      return rc2;
-    }
-    return rc;  // 插入新的索引失败
-  }
-
-  rc = record_handler_->update_record(&record);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR(
-        "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
-    return rc;
-  }
-
-  record.set_data(old_data);
-  return rc;
-}
-
 //更新单个字段
-/*RC Table::update_record(Record &record, std::vector<std::string> attr_names, std::vector<Value*> values)
+RC Table::update_record(Record &record, std::vector<std::string> attr_names, std::vector<Value*> values)
 {
   RC rc = RC::SUCCESS;
   if (attr_names.size() != values.size() || attr_names.size() == 0) {
@@ -731,7 +624,6 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
   int field_offset = -1;
   int field_length = -1;
   int field_index  = -1;
-  bool is_index = false;//标识当前列上是否有索引
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
   int record_size = table_meta_.record_size();
@@ -764,9 +656,6 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
       field_offset = field_meta->offset();
       field_length = field_meta->len();
       field_index  = sys_field_num + i;
-      if (nullptr != find_index_by_field(field_name)) {
-        is_index = true;
-      }
       break;
     }
     if(field_length < 0 || field_offset < 0) {
@@ -797,16 +686,28 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
     delete []new_value;
   }
   record.set_data(data);
-  if (is_index) {
-    rc = delete_entry_of_indexes(old_data, record.rid(), false);
-    if (rc != RC::SUCCESS) {
-      LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-          record.rid().page_num,
-          record.rid().slot_num,
-          rc,
-          strrc(rc));
-      return rc;
+
+  rc = delete_entry_of_indexes(old_data, record.rid(), false);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+        record.rid().page_num,
+        record.rid().slot_num,
+        rc,
+        strrc(rc));
+    return rc;
+  }
+
+  rc = insert_entry_of_indexes(record.data(), record.rid());
+  if (rc != RC::SUCCESS) {  // 可能出现了键值重复
+    RC rc2 = insert_entry_of_indexes(old_data, record.rid());
+    if (rc2 != RC::SUCCESS) {
+      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+      return rc2;
     }
+    return rc;  // 插入新的索引失败
   }
 
   rc = record_handler_->update_record(&record);
@@ -815,21 +716,7 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
         "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
     return rc;
   }
-
-  if(is_index) {
-    rc = insert_entry_of_indexes(record.data(), record.rid());
-    if (rc != RC::SUCCESS) {  // 插入失败，换回旧索引
-      RC rc2 = insert_entry_of_indexes(old_data, record.rid());
-      if (rc2 != RC::SUCCESS) {
-        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-            name(),
-            rc2,
-            strrc(rc2));
-      }
-      return rc;
-    }
-  }
   
   delete []data;
   return rc;
-}*/
+}
