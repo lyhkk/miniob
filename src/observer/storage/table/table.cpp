@@ -188,19 +188,26 @@ RC Table::open(const char *meta_file, const char *base_dir)
   const int index_num = table_meta_.index_num();
   for (int i = 0; i < index_num; i++) {
     const IndexMeta *index_meta = table_meta_.index(i);
-    const FieldMeta *field_meta = table_meta_.field(index_meta->field());
-    if (field_meta == nullptr) {
-      LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
-                name(), index_meta->name(), index_meta->field());
-      // skip cleanup
-      //  do all cleanup action in destructive Table function
-      return RC::INTERNAL;
+    std::vector<const FieldMeta *> field_metas;
+    const std::vector<std::string> &field_names = index_meta->field();
+    for (size_t j = 0; j < field_names.size(); i++) {
+      const FieldMeta *field_meta = table_meta_.field(field_names[j].c_str());
+      if (field_meta == nullptr) {
+        LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
+            name(),
+            index_meta->name(),
+            index_meta->field().data());
+        // skip cleanup
+        //  do all cleanup action in destructive Table function
+        return RC::INTERNAL;
+      }
+      field_metas.emplace_back(field_meta);
     }
 
     BplusTreeIndex *index      = new BplusTreeIndex();
     std::string     index_file = table_index_file(base_dir, name(), index_meta->name());
 
-    rc = index->open(index_file.c_str(), *index_meta, *field_meta);
+    rc = index->open(index_file.c_str(), *index_meta, field_metas);
     if (rc != RC::SUCCESS) {
       delete index;
       LOG_ERROR("Failed to open index. table=%s, index=%s, file=%s, rc=%s",
@@ -382,19 +389,44 @@ RC Table::get_record_scanner(RecordFileScanner &scanner, Trx *trx, bool readonly
   return rc;
 }
 
-RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name)
+RC Table::create_index(Trx *trx, bool unique, const std::vector<const FieldMeta*> &field_metas, const char *index_name)
 {
-  if (common::is_blank(index_name) || nullptr == field_meta) {
+  if (common::is_blank(index_name) || field_metas.empty()) {
     LOG_INFO("Invalid input arguments, table name is %s, index_name is blank or attribute_name is blank", name());
     return RC::INVALID_ARGUMENT;
   }
 
   IndexMeta new_index_meta;
 
-  RC rc = new_index_meta.init(index_name, *field_meta);
+  RC rc = new_index_meta.init(index_name, unique, field_metas);
   if (rc != RC::SUCCESS) {
+    std::string field_names = field_metas[0]->name();
+    for (int i = 0; i < (int)field_metas.size(); i++) {
+      field_names += ", ";
+      field_names += field_metas[i]->name();
+    }
     LOG_INFO("Failed to init IndexMeta in table:%s, index_name:%s, field_name:%s", 
-             name(), index_name, field_meta->name());
+             name(), index_name, field_names.c_str());
+    return rc;
+  }
+
+  // 确定索引列在表中所有列的排序
+  std::vector<int> field_ids;
+  for (size_t i = 0; i < field_metas.size(); i++) {
+    const FieldMeta *field_meta = field_metas[i];
+    int field_id = 0;
+    for (FieldMeta field : *table_meta_.field_metas()) {
+      if (0 == strcmp(field.name(), field_meta->name())) {
+        field_ids.emplace_back(field_id);
+        break;
+      }
+      field_id++;
+    }
+  }
+  if (field_ids.size() != field_metas.size()) {
+    rc = RC::VARIABLE_NOT_VALID;
+    LOG_ERROR("Failed to find column_id for all index_fields, column_id size:%d, index_field size:%d", 
+                field_ids.size(), field_metas.size());
     return rc;
   }
 
@@ -402,7 +434,7 @@ RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_
   BplusTreeIndex *index      = new BplusTreeIndex();
   std::string     index_file = table_index_file(base_dir_.c_str(), name(), index_name);
 
-  rc = index->create(index_file.c_str(), new_index_meta, *field_meta);
+  rc = index->create(index_file.c_str(), unique, new_index_meta, field_ids, field_metas);
   if (rc != RC::SUCCESS) {
     delete index;
     LOG_ERROR("Failed to create bplus tree index. file name=%s, rc=%d:%s", index_file.c_str(), rc, strrc(rc));
@@ -495,9 +527,20 @@ RC Table::delete_record(const Record &record)
 RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
 {
   RC rc = RC::SUCCESS;
-  for (Index *index : indexes_) {
+  for (size_t i = 0; i < indexes_.size(); i++) {
+    Index *index = indexes_[i];
     rc = index->insert_entry(record, &rid);
+  
+    // 插入失败的时候，回滚已经成功的索引
     if (rc != RC::SUCCESS) {
+      RC rc2 = RC::SUCCESS;
+      for (size_t j = 0; j < i; j++) {
+        rc2 = indexes_[j]->delete_entry(record, &rid);
+        if (RC::SUCCESS != rc2) {
+          LOG_ERROR("rollback index [%d] failed after insert index failed", j);
+          break;
+        }
+      }
       break;
     }
   }
@@ -529,12 +572,17 @@ Index *Table::find_index(const char *index_name) const
 }
 Index *Table::find_index_by_field(const char *field_name) const
 {
-  const TableMeta &table_meta = this->table_meta();
+  /*const TableMeta &table_meta = this->table_meta();
   const IndexMeta *index_meta = table_meta.find_index_by_field(field_name);
   if (index_meta != nullptr) {
     return this->find_index(index_meta->name());
-  }
+  }*/
   return nullptr;
+}
+
+bool Table::is_field_in_index(std::vector<std::string> &field_names)
+{
+  return table_meta_.is_field_in_index(field_names);
 }
 
 RC Table::sync()
@@ -576,7 +624,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
   int field_offset = -1;
   int field_length = -1;
   int field_index  = -1;
-  bool is_index = false;//标识当前列上是否有索引
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
   int record_size = table_meta_.record_size();
@@ -609,9 +656,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
       field_offset = field_meta->offset();
       field_length = field_meta->len();
       field_index  = sys_field_num + i;
-      if (nullptr != find_index_by_field(field_name)) {
-        is_index = true;
-      }
       break;
     }
     if(field_length < 0 || field_offset < 0) {
@@ -642,16 +686,28 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     delete []new_value;
   }
   record.set_data(data);
-  if (is_index) {
-    rc = delete_entry_of_indexes(old_data, record.rid(), false);
-    if (rc != RC::SUCCESS) {
-      LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-          record.rid().page_num,
-          record.rid().slot_num,
-          rc,
-          strrc(rc));
-      return rc;
+
+  rc = delete_entry_of_indexes(old_data, record.rid(), false);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+        record.rid().page_num,
+        record.rid().slot_num,
+        rc,
+        strrc(rc));
+    return rc;
+  }
+
+  rc = insert_entry_of_indexes(record.data(), record.rid());
+  if (rc != RC::SUCCESS) {  // 可能出现了键值重复
+    RC rc2 = insert_entry_of_indexes(old_data, record.rid());
+    if (rc2 != RC::SUCCESS) {
+      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+      return rc2;
     }
+    return rc;  // 插入新的索引失败
   }
 
   rc = record_handler_->update_record(&record);
@@ -659,20 +715,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     LOG_ERROR(
         "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
     return rc;
-  }
-
-  if(is_index) {
-    rc = insert_entry_of_indexes(record.data(), record.rid());
-    if (rc != RC::SUCCESS) {  // 插入失败，换回旧索引
-      RC rc2 = insert_entry_of_indexes(old_data, record.rid());
-      if (rc2 != RC::SUCCESS) {
-        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-            name(),
-            rc2,
-            strrc(rc2));
-      }
-      return rc;
-    }
   }
   
   delete []data;

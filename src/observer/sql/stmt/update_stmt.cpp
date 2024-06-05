@@ -79,7 +79,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
             valid = true;
           }
         }
-        if (const_cast<Value&>(value).typecast(update_field->type()) != RC::SUCCESS) {
+        else if (const_cast<Value&>(value).typecast(update_field->type()) != RC::SUCCESS) {
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
             table->name(), update_field->name(), update_field->type(), value.attr_type());
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
