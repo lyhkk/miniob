@@ -81,6 +81,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         IS
         NOT
         NULL_T
+        UNIQUE
         LENGTH
         ROUND
         DATE_FORMAT
@@ -142,6 +143,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   std::vector<OrderBySqlNode>*     orderby_unit_list;
   std::vector<Value> *              value_list;
   JoinTableSqlNode *                relation_list;
+  std::vector<std::string> *        idx_relation_list;
   char *                            string;
   int                               number;
   float                             floats;
@@ -163,6 +165,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <number>              number
 %type <boolean>             is_null_comp
 %type <boolean>             null_option
+%type <boolean>             unique_option
 %type <comp>                comp_op
 %type <comp>                exists_op
 %type <expression>          where
@@ -176,6 +179,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <relation_list>       from
 %type <relation_list>       join_table
 %type <relation_list>       join_table_inner
+%type <idx_relation_list>   index_list
 %type <expression>          join_on
 %type <string>              as_info 
 %type <expression>          expression
@@ -307,16 +311,49 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE INDEX ID ON ID LBRACE ID RBRACE
+    CREATE unique_option INDEX ID ON ID LBRACE ID index_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
-      create_index.index_name = $3;
-      create_index.relation_name = $5;
-      create_index.attribute_name = $7;
-      free($3);
-      free($5);
-      free($7);
+      create_index.unique = $2;
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
+      std::vector<std::string> *indexes = $9;
+      if (nullptr != indexes) {
+        create_index.attribute_names.swap(*indexes);
+        delete $9;
+      }
+      create_index.attribute_names.emplace_back($8);
+      std::reverse(create_index.attribute_names.begin(), create_index.attribute_names.end());
+      free($4);
+      free($6);
+      free($8);
+    }
+    ;
+unique_option:
+    /* empty */
+    {
+      $$ = false;
+    }
+    | UNIQUE
+    {
+      $$ = true;
+    }
+index_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA ID index_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      }
+      else {
+        $$ = new std::vector<std::string>;
+      }
+      $$->emplace_back($2);
+      free($2);
     }
     ;
 
@@ -410,6 +447,19 @@ type:
     ;
 insert_stmt:        /*insert   语句的语法解析树*/
     INSERT INTO ID VALUES LBRACE value value_list RBRACE 
+    {
+      $$ = new ParsedSqlNode(SCF_INSERT);
+      $$->insertion.relation_name = $3;
+      if ($7 != nullptr) {
+        $$->insertion.values.swap(*$7);
+        delete $7;
+      }
+      $$->insertion.values.emplace_back(*$6);
+      std::reverse($$->insertion.values.begin(), $$->insertion.values.end());
+      delete $6;
+      free($3);
+    }
+    | INSERT INTO ID VALUES LBRACE negative_value value_list RBRACE 
     {
       $$ = new ParsedSqlNode(SCF_INSERT);
       $$->insertion.relation_name = $3;
@@ -594,13 +644,12 @@ update_kv_list:
     }
     ;
 update_kv:
-    ID EQ value
+    ID EQ expression
     {
       $$ = new UpdateKV;
       $$->attribute_name = $1;
-      $$->value = *$3;
+      $$->value = $3;
       free($1);
-      delete($3);
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/

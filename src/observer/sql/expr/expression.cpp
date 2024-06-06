@@ -759,7 +759,12 @@ RC FuncExpr::get_value(const Tuple &tuple, Value &value) const{
       float round_value = cell.get_float();
       // 根据round_num_进行四舍五入, round_num_为0时，四舍五入到整数, round_num_为1时，四舍五入到小数点后一位, 以此类推
       float temp = round_value * std::pow(10, round_num);
-      temp = std::round(temp);
+      if ( std::round(temp) - temp == 0.5) {
+        temp = (int)temp;
+      }
+      else {
+        temp = std::round(temp);
+      }
       temp = temp / std::pow(10, round_num);
       if (round_num <= 0) {
         value.set_int(temp);

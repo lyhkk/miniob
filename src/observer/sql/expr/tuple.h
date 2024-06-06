@@ -740,3 +740,16 @@ private:
   std::vector<std::unique_ptr<Expression>> exprs_;
   std::vector<Value>                      *cells_ = nullptr;
 };
+
+class EmptyTuple : public Tuple 
+{
+public:
+  EmptyTuple() = default;
+  virtual ~EmptyTuple() = default;
+
+  int cell_num() const { return 0; }
+
+  RC cell_at(int index, Value &cell) const { return RC::INVALID_ARGUMENT; }
+
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const { return RC::NOTFOUND; }
+};

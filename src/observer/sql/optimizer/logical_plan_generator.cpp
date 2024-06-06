@@ -372,7 +372,20 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
       return rc;
     }
   }
-  unique_ptr<LogicalOperator> update_oper(new UpdateLogicalOperator(table, update_stmt->values(), update_stmt->fields()));
+  auto process_sub_query = [](std::unique_ptr<Expression>& expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr.get());
+      return sub_query_expr->generate_subquery_logical_oper();
+    }
+    return RC::SUCCESS;
+  };
+  for (auto& value : update_stmt->values()) {
+    rc = process_sub_query(value);
+    if (RC::SUCCESS != rc) {
+      return rc;
+    }
+  }
+  unique_ptr<LogicalOperator> update_oper(new UpdateLogicalOperator(table, std::move(update_stmt->values()), update_stmt->fields()));
   if (predicate_oper) {
     predicate_oper->add_child(std::move(table_get_oper));
     update_oper->add_child(std::move(predicate_oper));

@@ -307,6 +307,73 @@ int Value::compare(const Value &other) const
   return -1;  // TODO return rc?
 }
 
+RC Value::typecast(AttrType target_type)
+  {
+    if(target_type == attr_type_)
+    {
+      return RC::SUCCESS;
+    }
+    if(target_type == DATES || attr_type_ == NULLS)
+    {
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+    switch (target_type)
+    {
+      case INTS:
+      {
+        int tmp = get_int_round();
+        set_int(tmp);
+      }
+        break;
+      case FLOATS:
+      {
+        float tmp = get_float();
+        set_float(tmp);
+      }
+        break;
+      case CHARS:
+      {
+        std::string tmp = get_string();
+        set_string(tmp.c_str());
+      }
+        break;
+      default:
+        break;
+    }
+    return RC::SUCCESS;
+  }
+
+int Value::get_int_round() const
+{
+  switch (attr_type_) {
+    case CHARS: {
+      try {
+        return (int)(std::stol(str_value_));
+      } catch (std::exception const &ex) {
+        LOG_TRACE("failed to convert string to number. s=%s, ex=%s", str_value_.c_str(), ex.what());
+        return 0;
+      }
+    }
+    case INTS: {
+      return num_value_.int_value_;
+    }
+    case FLOATS: {
+      return (int)(num_value_.float_value_ + 0.5);
+    }
+    case DATES: {
+      return num_value_.int_value_;
+    }
+    case BOOLEANS: {
+      return (int)(num_value_.bool_value_);
+    }
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return 0;
+    }
+  }
+  return 0;
+}
+
 int Value::get_int() const
 {
   switch (attr_type_) {

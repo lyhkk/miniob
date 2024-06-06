@@ -14,12 +14,14 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/update_stmt.h"
 #include "common/log/log.h"
+#include "sql/expr/expression.h"
 #include "sql/parser/value.h"
+#include "sql/stmt/select_stmt.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 #include <utility>
 
-UpdateStmt::UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<Value*> values, FilterStmt *filter_stmt)
+UpdateStmt::UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<std::unique_ptr<Expression>> &&values, FilterStmt *filter_stmt)
   : table_(table), fields_(std::move(fields)), values_(std::move(values)), filter_stmt_(filter_stmt)
 {}
 
@@ -31,7 +33,7 @@ UpdateStmt::~UpdateStmt()
   }
 }
 
-RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
+RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
 {
   const char *table_name = update.relation_name.c_str();
   if (nullptr == db || nullptr == table_name) {
@@ -51,19 +53,46 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  std::vector<Value*> values;
+  auto check_field = [&db](Expression *expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
+      return subquery_expr->generate_subquery_stmt(db, {});
+    }
+    return RC::SUCCESS;
+  };
+
+  std::vector<std::unique_ptr<Expression>> values;
   std::vector<FieldMeta> fields;
   const TableMeta &table_meta = table->table_meta();
   for (size_t i = 0; i < update.attribute_names.size(); i++) {
     const FieldMeta* update_field = table_meta.field(update.attribute_names[i].c_str());
     bool valid = false;
     if (nullptr != update_field) {
-      if (update_field->type() == update.values[i].attr_type() || (update.values[i].is_null() && update_field->nullable())) {
-        if (update_field->type() == CHARS && update_field->len() < update.values[i].length()) {
-          LOG_WARN("update chars with longer length");
-        } else {
+      if (update.values[i]->type() == ExprType::VALUE) {
+        const Value& value = static_cast<ValueExpr*>(update.values[i])->get_value();
+
+        if (update_field->type() == value.attr_type() || (value.is_null() && update_field->nullable())) {
+          if (update_field->type() == CHARS && update_field->len() < value.length()) {
+            LOG_WARN("update chars with longer length");
+          }
+          else {
+            valid = true;
+          }
+        }
+        else if (const_cast<Value&>(value).typecast(update_field->type()) != RC::SUCCESS) {
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+            table->name(), update_field->name(), update_field->type(), value.attr_type());
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
+        else {
           valid = true;
         }
+      }
+      else {
+        if (RC rc = update.values[i]->traverse_check(check_field); RC::SUCCESS != rc) {
+          return rc;
+        }
+        valid = true;
       }
     }
     if(!valid) {
@@ -71,8 +100,9 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
       return RC::INVALID_ARGUMENT;
     }
     fields.emplace_back(*update_field);
-    values.emplace_back(const_cast<Value*>(&update.values[i]));
+    values.emplace_back(update.values[i]);
   }
+  update.values.clear();
 
   std::unordered_map<std::string, Table *> table_map;
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
