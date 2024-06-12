@@ -716,7 +716,7 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
         "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
     return rc;
   }
-  
   delete []data;
+  record.set_data(old_data);
   return rc;
 }
