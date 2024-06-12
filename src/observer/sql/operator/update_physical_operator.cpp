@@ -57,7 +57,7 @@ RC UpdatePhysicalOperator::next()
     rc = table_->update_record(record, fields_, values);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to update record: %s", strrc(rc));
-      for (size_t i = old_records_.size() - 2; i >= 0; i--) {
+      for (size_t i = old_records_.size() - 1; i >= 0; i--) {
         RC rc2 = RC::SUCCESS;
         Record updated_record;
         std::vector<Value*> old_row_values;

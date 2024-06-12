@@ -167,20 +167,30 @@ public:
       return RC::INVALID_ARGUMENT;
     }
 
+    RC rc = RC::SUCCESS;
     if (bitmap_.get_bit(index)) {
       cell.set_null();
     }
-
     else {
       FieldExpr       *field_expr = speces_[index];
       Field            field = field_expr->field();
       const FieldMeta *field_meta = field.meta();
-      //AttrType         field_type = field.get_function_type();
-
-      cell.set_type(field_meta->type());
-      cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
-      // field.function_data(cell);
-      // cell.aggregate_type_ = field.aggregate_type_;
+      if (TEXTS == field_meta->type()) {
+        cell.set_type(CHARS);
+        int64_t offset = *(int64_t*)(record_->data() + field_meta->offset());
+        int64_t length = *(int64_t*)(record_->data() + field_meta->offset() + sizeof(int64_t));
+        char *text = (char*)malloc(length);
+        rc = table_->read_text(offset, length, text);
+        if (RC::SUCCESS != rc) {
+          LOG_WARN("Failed to read text from table, rc=%s", strrc(rc));
+          return rc;
+        }
+        cell.set_data(text, length);
+        free(text);
+      } else {
+        cell.set_type(field_meta->type());
+        cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+      }
     }
     return RC::SUCCESS;
   }

@@ -21,7 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include <regex>
 #include <cmath>
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "dates", "floats","nulls", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "dates", "floats","nulls", "booleans", "long", "texts"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -45,6 +45,8 @@ Value::Value(int val) { set_int(val); }
 Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
+
+Value::Value(int64_t val) { set_long(val); }
 
 Value::Value(const char *s, int len /*= 0*/)
 {
@@ -98,6 +100,10 @@ void Value::set_data(char *data, int length)
       num_value_.bool_value_ = *(int *)data != 0;
       length_                = length;
     } break;
+    case LONGS: {
+      num_value_.long_ = *(int64_t *)data;
+      length_                = length;
+    } break;
     default: {
       LOG_WARN("unknown data type: %d", attr_type_);
     } break;
@@ -121,6 +127,13 @@ void Value::set_boolean(bool val)
   attr_type_             = BOOLEANS;
   num_value_.bool_value_ = val;
   length_                = sizeof(val);
+}
+
+void Value::set_long(int64_t val)
+{
+  attr_type_ = LONGS;
+  num_value_.long_ = val;
+  length_ = sizeof(int64_t);
 }
 
 int Value::undefined_value()
@@ -171,6 +184,10 @@ void Value::set_value(const Value &value)
     case BOOLEANS: {
       set_boolean(value.get_boolean());
     } break;
+    case TEXTS:
+    case LONGS: {
+      set_long(value.get_long());
+    }
     case UNDEFINED: {
       ASSERT(false, "got an invalid value type");
     } break;
@@ -317,6 +334,11 @@ RC Value::typecast(AttrType target_type)
     {
       return RC::SCHEMA_FIELD_TYPE_MISMATCH;
     }
+    if (target_type == TEXTS)
+    {
+      this->attr_type_ = TEXTS;
+    }
+    
     switch (target_type)
     {
       case INTS:
@@ -437,6 +459,8 @@ float Value::get_float() const
 }
 
 std::string Value::get_string() const { return this->to_string(); }
+
+int64_t Value::get_long() const { return num_value_.long_; }
 
 bool Value::get_boolean() const
 {
