@@ -197,6 +197,7 @@ void Value::set_value(const Value &value)
 const char *Value::data() const
 {
   switch (attr_type_) {
+    case TEXTS:
     case CHARS: {
       return str_value_.c_str();
     } break;

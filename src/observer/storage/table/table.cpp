@@ -723,7 +723,7 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     if(value->length() == field_length) {
       memcpy(new_value, value->data(), value->length());
     }
-    else {
+    else if(value->length() < field_length) {
       memcpy(new_value, value->data(), value->length());
       memset(new_value + value->length(), '\0', field_length - value->length());
     }
