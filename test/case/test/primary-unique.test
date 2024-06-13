@@ -11,3 +11,11 @@ INSERT INTO unique_table VALUES (1,2,1);
 
 -- echo 2. select
 -- sort SELECT * FROM unique_table;
+
+
+CREATE TABLE unique_table2(id1 int, id2 int, col1 int, col2 int);
+create unique index index_id on unique_table2(id1);
+INSERT INTO unique_table2 VALUES (1,2,1,1);
+insert into unique_table2 values (2, 4, 5, 5);
+UPDATE unique_table2 SET id1=1,id2=4 where id2=2;
+UPDATE unique_table2 SET id1=1,id2=3 where id2=4;
