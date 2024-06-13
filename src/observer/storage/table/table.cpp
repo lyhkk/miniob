@@ -661,7 +661,6 @@ RC Table::update_record(Record &record, const char *attr_name, Value* value)
   return update_record(record, attr_names, values);
 }
 
-//更新单个字段
 RC Table::update_record(Record &record, std::vector<std::string> attr_names, std::vector<Value*> values)
 {
   RC rc = RC::SUCCESS;
@@ -673,13 +672,13 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
   int field_offset = -1;
   int field_length = -1;
   int field_index  = -1;
+  AttrType field_type;
   const int sys_field_num = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
   int record_size = table_meta_.record_size();
   char *old_data = record.data();
   char *data = new char[record_size];
   memcpy(data, old_data, record_size);
-
   for(size_t idx_cnt = 0; idx_cnt < attr_names.size(); idx_cnt++) {
     Value *value = values[idx_cnt];
     std::string &attr_name = attr_names[idx_cnt];
@@ -689,7 +688,9 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
       if( 0 != strcmp(field_name, attr_name.c_str())) {
         continue;
       }
+
       AttrType attr_type= field_meta->type();
+      field_type = field_meta->type();
       AttrType value_type = value->attr_type();
       if(field_meta->nullable() && value->is_null()) {
         //empty
@@ -711,11 +712,14 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
       LOG_WARN("field not find ,field name = %s", attr_name.c_str());
       return RC::SCHEMA_FIELD_NOT_EXIST;
     }
+    
+    
 
     const FieldMeta* null_field = table_meta_.null_field();
-
     char *new_value = new char[field_length + 1];
-  
+
+
+
     if(value->length() == field_length) {
       memcpy(new_value, value->data(), value->length());
     }
@@ -730,7 +734,19 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     }
     else {
       new_null_bitmap.clear_bit(field_index);
-      memcpy(data + field_offset, new_value, field_length);
+      if (TEXTS == field_type) {
+        int64_t position[2];
+        position[1] = value->length();
+        rc = write_text(position[0], position[1], value->data());
+        if (rc != RC::SUCCESS) {
+          LOG_WARN("Failed to write text into table, rc=%s", strrc(rc));
+          return rc;
+        }
+        memcpy(data + field_offset, position, 2 * sizeof(int64_t));
+      }
+      else {
+        memcpy(data + field_offset, new_value, field_length);
+      }
     }
     delete []new_value;
   }
