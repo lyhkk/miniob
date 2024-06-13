@@ -723,7 +723,7 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     if(value->length() == field_length) {
       memcpy(new_value, value->data(), value->length());
     }
-    else {
+    else if(value->length() < field_length) {
       memcpy(new_value, value->data(), value->length());
       memset(new_value + value->length(), '\0', field_length - value->length());
     }
@@ -783,46 +783,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
   }
   delete []data;
   record.set_data(old_data);
-  return rc;
-}
-
-RC Table::init_text_handler(const char *base_dir)
-{
-  std::string text_file = table_text_file(base_dir, table_meta_.name());
-
-  RC rc = BufferPoolManager::instance().open_file(text_file.c_str(), text_buffer_pool_);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to open disk buffer pool for file:%s. rc=%d:%s", text_file.c_str(), rc, strrc(rc));
-    return rc;
-  }
-
-  return rc;
-}
-
-RC Table::write_text(int64_t &offset, int64_t length, const char *data)
-{
-  RC rc = RC::SUCCESS;
-  rc = text_buffer_pool_->append_data(offset, length, data);
-  if (RC::SUCCESS != rc) {
-    LOG_WARN("Failed to append text into disk_buffer_pool, rc=%s", strrc(rc));
-    offset = -1;
-    length = -1;
-  }
-  return rc;
-}
-
-RC Table::read_text(int64_t offset, int64_t length, char *data) const
-{
-  RC rc = RC::SUCCESS;
-  if (0 > offset || 0 > length) {
-    LOG_ERROR("Invalid param: text offset %ld, length %ld", offset, length);
-    return RC::INVALID_ARGUMENT;
-  }
-
-  rc = text_buffer_pool_->get_data(offset, length, data);
-  if (RC::SUCCESS != rc) {
-    LOG_WARN("Failed to get text from disk_buffer_pool, rc=%s", strrc(rc));
-  }
   return rc;
 }
 

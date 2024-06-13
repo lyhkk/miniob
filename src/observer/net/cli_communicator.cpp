@@ -27,7 +27,7 @@ See the Mulan PSL v2 for more details. */
 #include "readline/readline.h"
 #endif
 
-#define MAX_MEM_BUFFER_SIZE 8192
+#define MAX_MEM_BUFFER_SIZE 8192 * 16
 #define PORT_DEFAULT 6789
 
 using namespace std;
@@ -91,6 +91,22 @@ char *my_readline(const char *prompt)
   }
   fprintf(stdout, "%s", prompt);
   char *s = fgets(buffer, MAX_MEM_BUFFER_SIZE, stdin);
+  // char *s = buffer;
+  // size_t total_read = 0;
+  // while (total_read < MAX_MEM_BUFFER_SIZE - 1) {
+  //     if (fgets(s, MAX_MEM_BUFFER_SIZE - total_read, stdin) == NULL) {
+  //         break; // 读取失败或者遇到EOF
+  //     }
+  //     size_t len = strlen(s);
+  //     total_read += len;
+  //     if (s[len - 1] == '\n') {
+  //         break; // 读取到换行符
+  //     }
+  //     s += len;
+  // }
+  // buffer[total_read] = '\0'; // 确保字符串以空字符结束
+  // s = buffer;
+  // fprintf(stdout, "%zu  %zu",strlen(s), strlen(buffer));
   if (nullptr == s) {
     if (ferror(stdin) || feof(stdin)) {
       LOG_WARN("failed to read line: %s", strerror(errno));

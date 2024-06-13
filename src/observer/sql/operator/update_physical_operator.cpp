@@ -172,7 +172,7 @@ RC UpdatePhysicalOperator::extract_old_value(Record &record, std::vector<Value*>
         if(raw_value.length() == field_length) {
           memcpy(new_value, raw_value.data(), raw_value.length());
         }
-        else {
+        else if(raw_value.length() < field_length){
           memcpy(new_value, raw_value.data(), raw_value.length());
           memset(new_value + raw_value.length(), '\0', field_length - raw_value.length());
         }
